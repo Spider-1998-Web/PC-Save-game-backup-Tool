@@ -1,107 +1,68 @@
 # Save Game Backup Tool
 
-A Python application for easily backing up, managing, and restoring video game save files across your computer.
+A tool for managing game save backups locally and in the cloud.
 
-## 🎮 Overview
+## Features
 
-The Save Game Backup Tool is a command-line utility designed to help gamers create and manage backups of their save game files. Never lose your progress again by maintaining organized backups that can be easily restored when needed.
+- Local backup creation and management
+- Cloud backup using Google Drive
+- Automatic backup updates
+- Backup restoration
+- Backup logging
+- User-friendly GUI interface
+- Integration with savegame.pro
 
-## ⚙️ Configuration
+## Setup
 
-The tool now uses a configuration file (`config.ini`) that is automatically created on first run. You can easily customize:
-
-- **Backup Location**: The directory where all game backups will be stored
-- **URL Settings**: Links to external resources like SaveGame.pro
-
-On first launch, the tool will create a default `config.ini` file in the same directory as the script. You can edit this file with any text editor to customize your settings.
-
-Example `config.ini` file:
-```ini
-[PATHS]
-base_backup_location = E:\save game
-
-[URLS]
-savegame_pro_url = https://savegame.pro/
-```
-
-## ✨ Features
-
-- **Create Backups**: Back up save files from any game to a central location
-- **Update Backups**: Keep your backups current with the latest save data
-- **Restore Backups**: Restore saved games to their original locations when needed
-- **Batch Operations**: Update or restore all backups at once
-- **Safety Measures**: Automatic safety backups before any restore operations
-- **Logging System**: Comprehensive activity logs to track all backup operations
-- **SaveGame.pro Integration**: Look up save game locations directly through the app
-- **Game Save Search**: Search for specific games on SaveGame.pro
-- **Configurable Settings**: Easy configuration via an external config file
-
-## 📋 Requirements
-
-- Python 3.6 or higher
-- Windows operating system
-- Internet connection (for SaveGame.pro features)
-
-## 🚀 Getting Started
-
-1. Clone or download this repository
-2. Make sure Python is installed on your system
-3. Run the script for the first time to generate the configuration file:
+1. Install Python 3.7 or higher
+2. Install required packages:
    ```
-   python Game_Save_backup_script.py
+   pip install -r requirements.txt
    ```
-4. Edit the generated `config.ini` file to set your preferred backup location
-5. Run the script again to start using the tool
 
-## 📝 Usage
+### Google Drive Setup
 
-The application presents a simple menu-driven interface:
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google Drive API for your project
+4. Go to Credentials
+5. Create OAuth 2.0 Client ID credentials
+6. Download the credentials and save them as `credentials.json` in the same directory as the script
+7. Run the script and follow the authentication process when prompted
 
-```
-Options:
-1. Create Backup
-2. Update Backup
-3. Restore Backup
-4. Update All Backups
-5. Restore All Backups
-6. List Backups
-7. List Safety Backups
-8. View Logs
-9. Open SaveGame.pro Website
-D. Delete Backup
-S. Search Game on SaveGame.pro
-Q. Exit
-```
+## Usage
 
-### Creating a Backup
+### Local Backups
 
-1. Select option 1
-2. Enter the game title
-3. Optionally search for the save location on SaveGame.pro
-4. Enter the source folder path containing the save files
+1. Click "Create Backup" to create a new backup
+2. Enter the game title and select the source folder
+3. Use "Update Backup" to update existing backups
+4. Use "Restore Backup" to restore backups to their original location
 
-### Restoring a Backup
+### Cloud Backups
 
-1. Select option 3
-2. Choose the game from the displayed list
-3. Confirm the restore operation
+1. Click "Create Cloud Backup" to upload a backup to Google Drive
+2. Use "List Cloud Backups" to view available cloud backups
+3. Use "Restore Cloud Backup" to download and restore a cloud backup
+4. Use "Delete Cloud Backup" to remove a backup from Google Drive
 
-## 🔒 Safety Features
+## Configuration
 
-- **Safety Backups**: The tool automatically creates a safety copy before any restore operation
-- **Confirmation Prompts**: Critical operations require explicit confirmation
-- **Detailed Logging**: All operations are logged for future reference
+The tool uses a `config.ini` file for configuration. You can edit this file to change:
+- Base backup location
+- Savegame.pro URL
 
-## 📚 File Structure
+## Logs
 
-- `Game_Save_backup_script.py`: Main Python script
-- `config.ini`: Configuration file (generated on first run)
-- `Save Game Backup Tool launcher.bat`: Windows batch launcher
-- `BASE_BACKUP_LOCATION/`: Root directory for all backups (location from config)
-  - `[Game Title]/`: Individual game backup folders
-  - `logs/`: Activity logs
-  - `logs/safety_backups/`: Safety backup storage
+All backup operations are logged in the logs directory. You can view the logs using the "View Logs" button.
 
-## 🤝 Credits
+## Safety Features
 
-- [SaveGame.pro](https://savegame.pro/) for providing a comprehensive database of save game locations 
+- Automatic safety backups before restore operations
+- Double confirmation for destructive operations
+- Backup verification before restoration
+- Error handling and recovery
+
+## Support
+
+For issues or questions, please create an issue in the repository. 

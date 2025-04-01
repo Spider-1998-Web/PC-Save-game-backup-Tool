@@ -11,6 +11,544 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
 import threading
 import queue
 import functools
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+import pickle
+import io
+
+# Google Drive API scopes
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+def get_google_drive_service():
+    """Get or create Google Drive service with authentication."""
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    
+    # If there are no (valid) credentials available, let the user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+    
+    return build('drive', 'v3', credentials=creds)
+
+def upload_to_drive(file_path, folder_name=None):
+    """Upload a file or folder to Google Drive."""
+    try:
+        service = get_google_drive_service()
+        print(f"Connected to Google Drive API")
+        
+        # Create folder if specified
+        folder_id = None
+        if folder_name:
+            print(f"Creating folder: {folder_name}")
+            folder_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            folder = service.files().create(body=folder_metadata, fields='id').execute()
+            folder_id = folder.get('id')
+            print(f"Created folder with ID: {folder_id}")
+        
+        if os.path.isdir(file_path):
+            # Handle directory upload
+            print(f"Uploading directory: {file_path}")
+            for root, dirs, files in os.walk(file_path):
+                for dir_name in dirs:
+                    dir_path = os.path.join(root, dir_name)
+                    rel_path = os.path.relpath(dir_path, file_path)
+                    drive_path = os.path.join(folder_name, rel_path).replace('\\', '/')
+                    
+                    print(f"Creating subfolder: {dir_name}")
+                    folder_metadata = {
+                        'name': dir_name,
+                        'mimeType': 'application/vnd.google-apps.folder',
+                        'parents': [folder_id] if folder_id else []
+                    }
+                    subfolder = service.files().create(body=folder_metadata, fields='id').execute()
+                
+                for file_name in files:
+                    file_full_path = os.path.join(root, file_name)
+                    print(f"Uploading file: {file_name}")
+                    file_metadata = {
+                        'name': file_name,
+                        'parents': [folder_id] if folder_id else []
+                    }
+                    
+                    media = MediaFileUpload(file_full_path, resumable=True)
+                    file = service.files().create(
+                        body=file_metadata,
+                        media_body=media,
+                        fields='id'
+                    ).execute()
+                    print(f"Uploaded file with ID: {file.get('id')}")
+        else:
+            # Handle single file upload
+            file_name = os.path.basename(file_path)
+            print(f"Uploading file: {file_name}")
+            file_metadata = {
+                'name': file_name,
+                'parents': [folder_id] if folder_id else []
+            }
+            
+            media = MediaFileUpload(file_path, resumable=True)
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            print(f"Uploaded file with ID: {file.get('id')}")
+        
+        print("Upload to Google Drive completed successfully")
+        return True
+    except Exception as e:
+        print(f"Error uploading to Google Drive: {e}")
+        return False
+
+def download_from_drive(file_id, destination_path):
+    """Download a file or folder from Google Drive."""
+    try:
+        service = get_google_drive_service()
+        print(f"Connected to Google Drive API")
+        
+        # Get file metadata
+        file = service.files().get(fileId=file_id, fields='name, mimeType').execute()
+        print(f"Downloading: {file['name']} (Type: {file['mimeType']})")
+        
+        if file['mimeType'] == 'application/vnd.google-apps.folder':
+            # Handle folder download
+            print(f"Creating destination folder: {destination_path}")
+            os.makedirs(destination_path, exist_ok=True)
+            
+            # List all files in the folder
+            print(f"Listing files in folder: {file_id}")
+            results = service.files().list(
+                q=f"'{file_id}' in parents",
+                fields="files(id, name, mimeType)"
+            ).execute()
+            
+            items = results.get('files', [])
+            print(f"Found {len(items)} items in the folder")
+            
+            for item in items:
+                item_path = os.path.join(destination_path, item['name'])
+                print(f"Processing item: {item['name']} ({item['mimeType']})")
+                
+                if item['mimeType'] == 'application/vnd.google-apps.folder':
+                    print(f"Recursively downloading subfolder: {item['name']}")
+                    download_from_drive(item['id'], item_path)
+                else:
+                    print(f"Downloading file: {item['name']}")
+                    try:
+                        request = service.files().get_media(fileId=item['id'])
+                        file_content = io.BytesIO()
+                        downloader = MediaIoBaseDownload(file_content, request)
+                        
+                        done = False
+                        while not done:
+                            status, done = downloader.next_chunk()
+                            print(f"Download progress: {int(status.progress() * 100)}%")
+                        
+                        # Ensure the directory exists
+                        os.makedirs(os.path.dirname(item_path), exist_ok=True)
+                        
+                        # Save the file
+                        file_content.seek(0)
+                        with open(item_path, 'wb') as f:
+                            f.write(file_content.read())
+                        print(f"Downloaded file saved to: {item_path}")
+                    except Exception as file_error:
+                        print(f"Error downloading file {item['name']}: {file_error}")
+        else:
+            # Handle single file download
+            print(f"Downloading single file: {file['name']}")
+            try:
+                request = service.files().get_media(fileId=file_id)
+                file_content = io.BytesIO()
+                downloader = MediaIoBaseDownload(file_content, request)
+                
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                    print(f"Download progress: {int(status.progress() * 100)}%")
+                
+                # Ensure the directory exists
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                
+                # If destination is a directory, use the file name from Drive
+                if os.path.isdir(destination_path):
+                    destination_path = os.path.join(destination_path, file['name'])
+                
+                # Save the file
+                file_content.seek(0)
+                with open(destination_path, 'wb') as f:
+                    f.write(file_content.read())
+                print(f"Downloaded file saved to: {destination_path}")
+            except Exception as file_error:
+                print(f"Error downloading file: {file_error}")
+                return False
+        
+        print("Download from Google Drive completed successfully")
+        return True
+    except Exception as e:
+        print(f"Error downloading from Google Drive: {e}")
+        return False
+
+def list_drive_backups():
+    """List all backups in Google Drive."""
+    try:
+        service = get_google_drive_service()
+        
+        # Search for backup folders
+        results = service.files().list(
+            q="mimeType='application/vnd.google-apps.folder' and name contains 'backup_'",
+            fields="files(id, name, createdTime)"
+        ).execute()
+        
+        backups = results.get('files', [])
+        
+        if not backups:
+            print("No backups found in Google Drive.")
+            return []
+        
+        print("\nGoogle Drive Backups:")
+        print("-------------------")
+        for backup in backups:
+            print(f"Name: {backup['name']}")
+            print(f"Created: {backup['createdTime']}")
+            print(f"ID: {backup['id']}")
+            print()
+        
+        return backups
+    except Exception as e:
+        print(f"Error listing Google Drive backups: {e}")
+        return []
+
+def create_cloud_backup(game_title, source_path):
+    """Create a cloud backup of game save files."""
+    try:
+        # Validate game title
+        game_title = game_title.strip()
+        if not game_title:
+            print("Error: Game title cannot be empty.")
+            return False
+            
+        # Check for invalid characters in game title
+        invalid_chars = '<>:"/\\|?*'
+        if any(char in game_title for char in invalid_chars):
+            print(f"Error: Game title cannot contain any of these characters: {invalid_chars}")
+            return False
+            
+        source_path = source_path.strip('"\'')  # Remove extra quotes around the path
+
+        # Verify the source path exists
+        if not os.path.exists(source_path):
+            print(f"Error: Source path '{source_path}' does not exist.")
+            return False
+
+        print(f"Creating cloud backup for {game_title} from {source_path}...")
+        
+        # Create a temporary directory for the backup
+        temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_backup")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)  # Clean up any existing temp directory
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # First copy the files to our temp directory
+        temp_game_dir = os.path.join(temp_dir, game_title)
+        os.makedirs(temp_game_dir, exist_ok=True)
+        
+        print(f"Copying files to temporary location...")
+        # Copy all files from source to temp directory
+        for item in os.listdir(source_path):
+            s = os.path.join(source_path, item)
+            d = os.path.join(temp_game_dir, item)
+            
+            try:
+                if os.path.isdir(s):
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
+            except Exception as e:
+                print(f"Warning: Failed to copy {s}: {e}")
+        
+        # Create a timestamp for the backup name
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f"backup_{game_title}_{timestamp}"
+        
+        # Create a zip file of the backup
+        zip_filename = os.path.join(temp_dir, f"{backup_name}.zip")
+        print(f"Creating zip archive: {zip_filename}")
+        
+        # Create zip file from the temp game directory
+        shutil.make_archive(
+            os.path.splitext(zip_filename)[0],  # Base name (without .zip)
+            'zip',  
+            temp_dir,  # Root directory to start from
+            game_title  # Directory to include in the archive
+        )
+        
+        print(f"Uploading to Google Drive...")
+        # Upload to Google Drive
+        success = upload_to_drive(zip_filename, backup_name)
+        
+        # Clean up temporary files
+        try:
+            shutil.rmtree(temp_dir)
+            print("Temporary files cleaned up.")
+        except Exception as e:
+            print(f"Warning: Could not clean up temp files: {e}")
+        
+        if success:
+            print(f"Cloud backup created successfully for {game_title} ✅")
+            log_backup_event("cloud_backup", game_title, source_path)
+            return True
+        else:
+            print(f"Failed to create cloud backup for {game_title}")
+            return False
+            
+    except Exception as e:
+        print(f"Error creating cloud backup: {e}")
+        return False
+
+def restore_cloud_backup(game_title, backup_id):
+    """Restore a cloud backup to its original location."""
+    try:
+        # Get the source path from the local backup's README file
+        local_backup_path = os.path.join(BASE_BACKUP_LOCATION, game_title)
+        readme_path = os.path.join(local_backup_path, "README.txt")
+        source_path = None
+        
+        if os.path.exists(readme_path):
+            with open(readme_path, "r") as f:
+                for line in f:
+                    if "Original Save Path:" in line:
+                        source_path = line.strip().replace("Original Save Path: ", "").strip('"\'')
+                        break
+        
+        # If we couldn't find the path from local backup, use a default location
+        if not source_path:
+            # Create a recovery location in the base backup folder
+            source_path = os.path.join(BASE_BACKUP_LOCATION, "recovered_games", game_title)
+            print(f"No destination path found. Will restore to recovery location: {source_path}")
+        
+        # Create a temporary directory for the download
+        temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_restore")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)  # Clean up any existing temp directory
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        print(f"Downloading cloud backup for {game_title}...")
+        # Download the backup from Google Drive
+        success = download_from_drive(backup_id, temp_dir)
+        
+        if not success:
+            print("Failed to download backup from Google Drive.")
+            return False
+        
+        # Find the zip file in the temp directory
+        zip_files = [f for f in os.listdir(temp_dir) if f.endswith('.zip')]
+        if not zip_files:
+            print("No backup zip file found in downloaded files.")
+            print(f"Files in temp dir: {os.listdir(temp_dir)}")
+            return False
+        
+        print(f"Found zip file: {zip_files[0]}")
+        zip_path = os.path.join(temp_dir, zip_files[0])
+        
+        # Extract directly to a new extraction directory
+        extract_dir = os.path.join(temp_dir, "extracted")
+        os.makedirs(extract_dir, exist_ok=True)
+        
+        print(f"Extracting zip file to: {extract_dir}")
+        # Extract the zip file
+        try:
+            shutil.unpack_archive(zip_path, extract_dir)
+            print(f"Extraction successful. Files: {os.listdir(extract_dir)}")
+        except Exception as extract_error:
+            print(f"Extraction error: {extract_error}")
+            return False
+        
+        # Check if extraction worked
+        if not os.listdir(extract_dir):
+            print("Error: Extracted directory is empty.")
+            return False
+            
+        # Create target directory if it doesn't exist
+        os.makedirs(source_path, exist_ok=True)
+        
+        print(f"Copying files to destination: {source_path}")
+        # Copy files from extracted directory to destination
+        for item in os.listdir(extract_dir):
+            s = os.path.join(extract_dir, item)
+            d = os.path.join(source_path, item)
+            
+            try:
+                if os.path.isdir(s):
+                    if os.path.exists(d):
+                        shutil.rmtree(d)  # Remove existing directory first
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
+                print(f"Copied: {item}")
+            except Exception as copy_error:
+                print(f"Error copying {item}: {copy_error}")
+        
+        print(f"Cloud backup restored successfully for {game_title} ✅")
+        log_backup_event("cloud_restore", game_title, source_path)
+        
+        # Clean up
+        try:
+            shutil.rmtree(temp_dir)
+            print("Temporary files cleaned up.")
+        except Exception as cleanup_error:
+            print(f"Warning: Could not clean up temp files: {cleanup_error}")
+            
+        return True
+            
+    except Exception as e:
+        print(f"Error restoring cloud backup: {e}")
+        # Don't delete temp_dir on error to allow for debugging
+        return False
+
+def delete_cloud_backup(backup_id):
+    """Delete a cloud backup from Google Drive."""
+    try:
+        service = get_google_drive_service()
+        service.files().delete(fileId=backup_id).execute()
+        print("Cloud backup deleted successfully ✅")
+        return True
+    except Exception as e:
+        print(f"Error deleting cloud backup: {e}")
+        return False
+
+def select_cloud_backup_dialog(title="Select Cloud Backup"):
+    """Function to show cloud backup selection dialog."""
+    result = {"selected": None}
+    
+    dialog = tk.Toplevel(root)
+    dialog.title(title)
+    dialog.geometry("500x400")
+    dialog.transient(root)
+    dialog.grab_set()
+    
+    ttk.Label(dialog, text="Available Cloud Backups:").pack(anchor=tk.W, padx=10, pady=(5, 0))
+    
+    # Create listbox with scrollbar
+    frame = ttk.Frame(dialog)
+    frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+    
+    scrollbar = ttk.Scrollbar(frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    backup_list = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 10))
+    backup_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    
+    scrollbar.config(command=backup_list.yview)
+    
+    # Get cloud backups
+    backups = list_drive_backups()
+    
+    if not backups:
+        backup_list.insert(tk.END, "No cloud backups found")
+    else:
+        for backup in backups:
+            backup_list.insert(tk.END, f"{backup['name']} ({backup['createdTime']})")
+    
+    def on_select():
+        selection = backup_list.curselection()
+        if selection and backups:
+            index = selection[0]
+            if index < len(backups):
+                result["selected"] = backups[index]
+        dialog.destroy()
+    
+    # Buttons
+    button_frame = ttk.Frame(dialog)
+    button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+    
+    select_btn = ttk.Button(button_frame, text="Select", command=on_select)
+    select_btn.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy)
+    cancel_btn.pack(side=tk.RIGHT)
+    
+    dialog.wait_window()
+    return result["selected"]
+
+def on_create_cloud_backup():
+    """Handle create cloud backup button click."""
+    game_title = simpledialog.askstring("Create Cloud Backup", "Enter the game title:")
+    if game_title:
+        source_path = filedialog.askdirectory(title="Select source folder")
+        if source_path:
+            run_in_thread(lambda: create_cloud_backup(game_title, source_path),
+                         "Cloud backup created successfully!")
+
+def on_restore_cloud_backup():
+    """Handle restore cloud backup button click."""
+    backup = select_cloud_backup_dialog("Select Cloud Backup to Restore")
+    if backup:
+        try:
+            # Try to extract game title from backup name (format: backup_GAMETITLE_TIMESTAMP)
+            name_parts = backup['name'].split('_')
+            if len(name_parts) >= 3 and name_parts[0] == 'backup':
+                # If format is correct, use the second part as game title
+                game_title = name_parts[1]
+            else:
+                # If format is different, ask user for game title
+                game_title = simpledialog.askstring("Game Title", 
+                                                 f"Enter the game title for backup '{backup['name']}':")
+                if not game_title:
+                    messagebox.showinfo("Restore Cancelled", "Restore operation cancelled.")
+                    return
+        except Exception:
+            # If any error occurs in parsing, ask user for game title
+            game_title = simpledialog.askstring("Game Title", 
+                                             "Enter the game title for this backup:")
+            if not game_title:
+                messagebox.showinfo("Restore Cancelled", "Restore operation cancelled.")
+                return
+        
+        # Check if we have a local backup to determine restore path
+        local_backup_path = os.path.join(BASE_BACKUP_LOCATION, game_title)
+        readme_path = os.path.join(local_backup_path, "README.txt")
+        restore_location = "to its original location"
+        
+        if not os.path.exists(readme_path):
+            restore_location = f"to {os.path.join(BASE_BACKUP_LOCATION, 'recovered_games', game_title)}"
+        
+        if messagebox.askyesno("Confirm Restore",
+                             f"This will restore the cloud backup for '{game_title}' {restore_location}.\n\nContinue?"):
+            run_in_thread(lambda: restore_cloud_backup(game_title, backup['id']),
+                         "Cloud backup restored successfully!")
+
+def on_delete_cloud_backup():
+    """Handle delete cloud backup button click."""
+    backup = select_cloud_backup_dialog("Select Cloud Backup to Delete")
+    if backup:
+        if messagebox.askyesno("Confirm Delete",
+                             f"Are you sure you want to delete the cloud backup '{backup['name']}'?"):
+            confirm = simpledialog.askstring("Final Confirmation",
+                                           "Type 'DELETE' to confirm:")
+            if confirm.upper() == "DELETE":
+                run_in_thread(lambda: delete_cloud_backup(backup['id']),
+                             "Cloud backup deleted successfully!")
+
+def on_list_cloud_backups():
+    """Handle list cloud backups button click."""
+    run_in_thread(list_drive_backups)
 
 # Function to create default config file
 def create_default_config():
@@ -1326,8 +1864,41 @@ def start_gui():
                                  command=on_delete_backup)
     delete_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Add a separator before exit button
-    ttk.Separator(scrollable_frame, orient='horizontal').pack(fill=tk.X, pady=10)  # Reduced padding
+    # Add separator before cloud backup section
+    ttk.Separator(scrollable_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+    
+    # Cloud backup section header
+    ttk.Label(scrollable_frame, 
+             text="Cloud Backup", 
+             font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+    
+    # Cloud backup buttons
+    create_cloud_backup_btn = ttk.Button(scrollable_frame, 
+                                       text="Create Cloud Backup", 
+                                       width=button_width, 
+                                       command=on_create_cloud_backup)
+    create_cloud_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    
+    restore_cloud_backup_btn = ttk.Button(scrollable_frame, 
+                                        text="Restore Cloud Backup", 
+                                        width=button_width, 
+                                        command=on_restore_cloud_backup)
+    restore_cloud_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    
+    list_cloud_backups_btn = ttk.Button(scrollable_frame, 
+                                      text="List Cloud Backups", 
+                                      width=button_width, 
+                                      command=on_list_cloud_backups)
+    list_cloud_backups_btn.pack(fill=tk.X, pady=(0, 5))
+    
+    delete_cloud_backup_btn = ttk.Button(scrollable_frame, 
+                                       text="Delete Cloud Backup", 
+                                       width=button_width, 
+                                       command=on_delete_cloud_backup)
+    delete_cloud_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    
+    # Add separator before exit button
+    ttk.Separator(scrollable_frame, orient='horizontal').pack(fill=tk.X, pady=10)
     
     exit_btn = ttk.Button(scrollable_frame, 
                          text="Exit", 
