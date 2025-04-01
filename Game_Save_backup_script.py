@@ -4,6 +4,13 @@ import webbrowser
 from datetime import datetime
 import configparser
 import sys
+import subprocess
+import time
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
+import threading
+import queue
+import functools
 
 # Function to create default config file
 def create_default_config():
@@ -105,7 +112,19 @@ def copy_dir_recursively(src, dst):
 
 def create_backup(game_title, source_path):
     """Creates a new backup of the game save files."""
-    source_path = source_path.strip('"')  # Remove extra quotes around the path
+    # Validate game title
+    game_title = game_title.strip()
+    if not game_title:
+        print("Error: Game title cannot be empty.")
+        return False
+        
+    # Check for invalid characters in game title
+    invalid_chars = '<>:"/\\|?*'
+    if any(char in game_title for char in invalid_chars):
+        print(f"Error: Game title cannot contain any of these characters: {invalid_chars}")
+        return False
+        
+    source_path = source_path.strip('"\'')  # Remove extra quotes around the path
 
     # Define the backup location for the specific game
     backup_path = os.path.join(BASE_BACKUP_LOCATION, game_title)
@@ -160,7 +179,7 @@ def update_backup(game_title, auto_confirm=False):
         with open(readme_path, "r") as f:
             for line in f:
                 if "Original Save Path:" in line:
-                    source_path = line.strip().replace("Original Save Path: ", "")
+                    source_path = line.strip().replace("Original Save Path: ", "").strip('"\'')
                     break
     
     if not source_path:
@@ -174,7 +193,7 @@ def update_backup(game_title, auto_confirm=False):
         
         if confirm.lower() != 'y':
             source_path = input("Enter the new source path: ")
-            source_path = source_path.strip('"')
+            source_path = source_path.strip('"\'')
     
     # Check if the source path exists
     if not os.path.exists(source_path):
@@ -217,7 +236,7 @@ def update_backup(game_title, auto_confirm=False):
         print(f"Error updating backup: {e}")
         return False
 
-def update_all_backups():
+def update_all_backups(auto_confirm=False):
     """Updates all available backups."""
     print("\nUpdating all backups...")
     
@@ -238,11 +257,13 @@ def update_all_backups():
     failed_count = 0
     
     print(f"Found {len(backups)} backups to update")
-    confirm = input("Do you want to proceed with updating all backups? (y/n): ")
     
-    if confirm.lower() != 'y':
-        print("Update all operation cancelled.")
-        return
+    # Only ask for confirmation if not in auto_confirm mode
+    if not auto_confirm:
+        confirm = input("Do you want to proceed with updating all backups? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Update all operation cancelled.")
+            return
     
     for game_title in backups:
         print(f"\nProcessing: {game_title}")
@@ -421,7 +442,7 @@ def restore_backup(game_title, auto_confirm=False):
         print(f"Error restoring backup: {e}")
         return False
 
-def restore_all_backups():
+def restore_all_backups(auto_confirm=False):
     """Restores all available backups."""
     print("\nRestoring all backups...")
     
@@ -443,17 +464,19 @@ def restore_all_backups():
     
     print(f"Found {len(backups)} backups to restore")
     print("⚠️ WARNING: This will restore ALL game saves to their original locations! ⚠️")
-    confirm = input("Are you absolutely sure you want to proceed with restoring all backups? (y/n): ")
     
-    if confirm.lower() != 'y':
-        print("Restore all operation cancelled.")
-        return
-    
-    # Double-confirm since this is a potentially destructive operation
-    confirm = input("Type 'RESTORE ALL' to confirm: ")
-    if confirm != "RESTORE ALL":
-        print("Restore all operation cancelled.")
-        return
+    # Only ask for confirmation if not in auto_confirm mode
+    if not auto_confirm:
+        confirm = input("Are you absolutely sure you want to proceed with restoring all backups? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Restore all operation cancelled.")
+            return
+        
+        # Double-confirm since this is a potentially destructive operation
+        confirm = input("Type 'RESTORE ALL' to confirm: ")
+        if confirm != "RESTORE ALL":
+            print("Restore all operation cancelled.")
+            return
     
     for game_title in backups:
         print(f"\nProcessing: {game_title}")
@@ -626,7 +649,7 @@ def check_create_dir(path):
             return False
     return True
 
-def delete_backup(game_title=None):
+def delete_backup(game_title=None, auto_confirm=False):
     """Permanently delete a backup and all related safety backups for a game."""
     if not game_title:
         # List available backups first
@@ -644,17 +667,18 @@ def delete_backup(game_title=None):
         print(f"Error: No backup found for {game_title}.")
         return False
     
-    # Confirm with the user
-    confirm = input(f"Are you sure you want to PERMANENTLY delete the backup for '{game_title}' and all related safety backups? (y/n): ")
-    if confirm.lower() != 'y':
-        print("Delete operation cancelled.")
-        return False
-    
-    # Double-confirm for safety since this is permanent
-    confirm = input("This action CANNOT be undone. Type 'DELETE' to confirm: ")
-    if confirm != "DELETE":
-        print("Delete operation cancelled.")
-        return False
+    # Confirm with the user if not auto-confirming
+    if not auto_confirm:
+        confirm = input(f"Are you sure you want to PERMANENTLY delete the backup for '{game_title}' and all related safety backups? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Delete operation cancelled.")
+            return False
+        
+        # Double-confirm for safety since this is permanent
+        confirm = input("This action CANNOT be undone. Type 'DELETE' to confirm: ")
+        if confirm.upper() != "DELETE":  # Changed to case-insensitive comparison
+            print("Delete operation cancelled.")
+            return False
     
     try:
         # 1. First delete the main backup
@@ -704,6 +728,149 @@ def delete_backup(game_title=None):
         print(f"Error deleting backup: {e}")
         return False
 
+def check_backup_location_permissions():
+    """Check if the backup location is writable."""
+    try:
+        # Try to create a test file
+        test_file = os.path.join(BASE_BACKUP_LOCATION, ".test")
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        return True
+    except Exception as e:
+        print(f"Error: Cannot write to backup location {BASE_BACKUP_LOCATION}: {e}")
+        print("Please check the folder permissions and try again.")
+        return False
+
+def create_test_backups():
+    """Create sample backups for testing purposes."""
+    print("\nCreating test backups...")
+    
+    # Create a test directory for sample saves
+    test_dir = os.path.join(BASE_BACKUP_LOCATION, "test_saves")
+    if not os.path.exists(test_dir):
+        os.makedirs(test_dir)
+    
+    # Create sample game saves
+    test_games = [
+        "Test Game 1",
+        "Test Game 2",
+        "Test Game 3"
+    ]
+    
+    for game in test_games:
+        # Create a sample save directory
+        game_save_dir = os.path.join(test_dir, game)
+        os.makedirs(game_save_dir, exist_ok=True)
+        
+        # Create some dummy save files
+        for i in range(3):
+            save_file = os.path.join(game_save_dir, f"save_{i}.txt")
+            with open(save_file, "w") as f:
+                f.write(f"This is a test save file for {game}\n")
+                f.write(f"Created at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        # Create a backup of this test game
+        create_backup(game, game_save_dir)
+        print(f"Created test backup for {game}")
+    
+    print("\nTest backups created successfully!")
+    print("You can now test all features with these sample backups.")
+
+def on_test_mode():
+    """Handle test mode button click."""
+    if messagebox.askyesno("Test Mode", 
+                          "This will create sample backups for testing.\nContinue?"):
+        run_in_thread(create_test_backups, "Test backups created successfully!")
+
+def select_backup_dialog(title="Select Backup", allow_cancel=True):
+    """Function to populate backup list and return selected title with optimized performance"""
+    result = {"selected": None}
+    
+    dialog = tk.Toplevel(root)
+    dialog.title(title)
+    dialog.geometry("500x400")
+    dialog.transient(root)
+    dialog.grab_set()
+    
+    ttk.Label(dialog, text="Available Backups:").pack(anchor=tk.W, padx=10, pady=(5, 0))  # Reduced padding
+    
+    # Create listbox with scrollbar
+    frame = ttk.Frame(dialog)
+    frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)  # Reduced padding
+    
+    scrollbar = ttk.Scrollbar(frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    backup_list = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 10))
+    backup_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    
+    scrollbar.config(command=backup_list.yview)
+    
+    # Get backups with optimized performance
+    backups = []
+    if not os.path.exists(BASE_BACKUP_LOCATION):
+        backup_list.insert(tk.END, "No backups found")
+    else:
+        try:
+            backups = [d for d in os.listdir(BASE_BACKUP_LOCATION) 
+                       if os.path.isdir(os.path.join(BASE_BACKUP_LOCATION, d)) 
+                       and d != "logs" 
+                       and not d.endswith("_backup_")]
+            
+            if not backups:
+                backup_list.insert(tk.END, "No backups found")
+            else:
+                # Batch insert items for better performance
+                items_to_insert = []
+                for i, backup in enumerate(backups, 1):
+                    backup_path = os.path.join(BASE_BACKUP_LOCATION, backup)
+                    readme_path = os.path.join(backup_path, "README.txt")
+                    
+                    backup_date = "Unknown"
+                    
+                    if os.path.exists(readme_path):
+                        try:
+                            with open(readme_path, "r") as f:
+                                for line in f:
+                                    if "Backup Date:" in line:
+                                        backup_date = line.strip().replace("Backup Date: ", "")
+                                        break
+                        except Exception:
+                            pass
+                    
+                    items_to_insert.append((f"{backup} - {backup_date}", i))
+                
+                # Insert all items at once
+                for text, i in items_to_insert:
+                    backup_list.insert(tk.END, text)
+                    backup_list.itemconfig(i-1, {'bg': '#f0f0f0' if i % 2 == 0 else '#ffffff'})
+        except Exception as e:
+            backup_list.insert(tk.END, f"Error loading backups: {e}")
+    
+    # Buttons with optimized layout
+    button_frame = ttk.Frame(dialog)
+    button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))  # Reduced padding
+    
+    def on_select():
+        selection = backup_list.curselection()
+        if selection and backups:
+            index = selection[0]
+            if index < len(backups):
+                result["selected"] = backups[index]
+        dialog.destroy()
+    
+    select_btn = ttk.Button(button_frame, text="Select", command=on_select)
+    select_btn.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    if allow_cancel:
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy)
+        cancel_btn.pack(side=tk.RIGHT)
+    
+    # Wait for dialog to close
+    dialog.wait_window()
+    return result["selected"]
+
 def main(gui_mode=False):
     """Main function for user interaction."""
     if gui_mode:
@@ -724,6 +891,11 @@ def main(gui_mode=False):
             
     if not base_dirs_ok:
         print("Warning: Some base directories could not be created. Some features may not work properly.")
+    
+    # Check backup location permissions
+    if not check_backup_location_permissions():
+        input("Press Enter to exit...")
+        sys.exit(1)
     
     while True:
         print("\nOptions:")
@@ -810,126 +982,170 @@ def main(gui_mode=False):
             print(f"An unexpected error occurred: {e}")
             print("Please try again.")
 
+# GUI Callback Functions
+def on_create_backup():
+    """Handle create backup button click."""
+    game_title = simpledialog.askstring("Create Backup", "Enter the game title:")
+    if game_title:
+        source_path = filedialog.askdirectory(title="Select source folder")
+        if source_path:
+            run_in_thread(lambda: create_backup(game_title, source_path), 
+                         "Backup created successfully!")
+
+def on_update_backup():
+    """Handle update backup button click."""
+    game_title = select_backup_dialog("Select Backup to Update")
+    if game_title:
+        run_in_thread(lambda: update_backup(game_title, auto_confirm=True),
+                     "Backup updated successfully!")
+
+def on_restore_backup():
+    """Handle restore backup button click."""
+    game_title = select_backup_dialog("Select Backup to Restore")
+    if game_title:
+        if messagebox.askyesno("Confirm Restore", 
+                             "This will restore the backup to its original location. Continue?"):
+            run_in_thread(lambda: restore_backup(game_title, auto_confirm=True),
+                         "Backup restored successfully!")
+
+def on_update_all():
+    """Handle update all backups button click."""
+    if messagebox.askyesno("Confirm Update All", 
+                          "This will update all backups. Continue?"):
+        run_in_thread(lambda: update_all_backups(auto_confirm=True),
+                     "All backups updated successfully!")
+
+def on_restore_all():
+    """Handle restore all backups button click."""
+    if messagebox.askyesno("Confirm Restore All", 
+                          "⚠️ WARNING: This will restore ALL game saves to their original locations! Continue?"):
+        confirm = simpledialog.askstring("Final Confirmation", 
+                                       "Type 'RESTORE ALL' to confirm:")
+        if confirm == "RESTORE ALL":
+            run_in_thread(lambda: restore_all_backups(auto_confirm=True),
+                         "All backups restored successfully!")
+
+def on_view_logs():
+    """Handle view logs button click."""
+    run_in_thread(view_logs)
+
+def on_open_savegame_pro():
+    """Handle open savegame.pro button click."""
+    run_in_thread(open_savegame_pro)
+
+def on_search_game():
+    """Handle search game button click."""
+    game_name = simpledialog.askstring("Search Game", "Enter game name to search:")
+    if game_name:
+        search_url = f"{SAVEGAME_PRO_URL}?s={game_name.replace(' ', '+')}"
+        webbrowser.open(search_url)
+
+def on_delete_backup():
+    """Handle delete backup button click."""
+    game_title = select_backup_dialog("Select Backup to Delete")
+    if game_title:
+        if messagebox.askyesno("Confirm Delete", 
+                             f"Are you sure you want to delete the backup for '{game_title}'?"):
+            confirm = simpledialog.askstring("Final Confirmation", 
+                                           "Type 'DELETE' to confirm:")
+            if confirm.upper() == "DELETE":
+                run_in_thread(lambda: delete_backup(game_title, auto_confirm=True),
+                             "Backup deleted successfully!")
+
+def switch_to_cli():
+    """Handle switch to CLI mode button click."""
+    global root
+    if messagebox.askyesno("Switch Mode", 
+                          "Are you sure you want to switch to CLI mode?"):
+        root.quit()
+        root.destroy()
+        main(gui_mode=False)
+
 # GUI Implementation
 def start_gui():
     """Start the GUI interface for the backup tool."""
-    import tkinter as tk
-    from tkinter import ttk, filedialog, messagebox, scrolledtext
-    from tkinter import simpledialog
-    import threading
-    import queue
-    import functools
-    
-    # Thread-safe function executor
-    def run_in_thread(func, success_msg=None):
-        # Create a queue for console output
-        console_queue = queue.Queue()
-        # Create a flag to signal when the operation is done
-        done_flag = threading.Event()
-        # Result storage
-        result_container = {"success": False, "error": None}
-        
-        # Text redirector for capturing console output
-        class ThreadSafeConsoleRedirector:
-            def __init__(self, queue_obj):
-                self.queue = queue_obj
-                
-            def write(self, string):
-                self.queue.put(string)
-                
-            def flush(self):
-                pass
-        
-        # Function to run in a thread
-        def thread_target():
-            # Redirect stdout
-            orig_stdout = sys.stdout
-            sys.stdout = ThreadSafeConsoleRedirector(console_queue)
-            
-            try:
-                # Call the target function
-                result = func()
-                result_container["success"] = result if result is not None else True
-            except Exception as e:
-                result_container["error"] = str(e)
-                print(f"Error: {e}")
-            finally:
-                # Restore stdout
-                sys.stdout = orig_stdout
-                # Signal that we're done
-                done_flag.set()
-        
-        # Start the thread
-        thread = threading.Thread(target=thread_target)
-        thread.daemon = True
-        thread.start()
-        
-        # Function to update console and check if the thread is done
-        def check_thread():
-            # Process all messages in the queue
-            while not console_queue.empty():
-                try:
-                    message = console_queue.get_nowait()
-                    console.configure(state="normal")
-                    console.insert(tk.END, message)
-                    console.see(tk.END)
-                    console.configure(state="disabled")
-                    console_queue.task_done()
-                except queue.Empty:
-                    break
-            
-            # Check if the thread is done
-            if done_flag.is_set():
-                if result_container["error"]:
-                    messagebox.showerror("Error", f"Operation failed: {result_container['error']}")
-                elif success_msg and result_container["success"]:
-                    messagebox.showinfo("Success", success_msg)
-                return  # Stop checking
-            
-            # Schedule the next check
-            root.after(100, check_thread)
-        
-        # Start checking
-        root.after(100, check_thread)
+    global root, console
     
     # Create the main window
     root = tk.Tk()
     root.title("Save Game Backup Tool")
-    root.geometry("800x600")
-    root.minsize(600, 500)
+    root.geometry("800x600")  # Set initial size
+    root.resizable(False, False)  # Disable window resizing
     
-    # Configure style
+    # Add proper window closing handler
+    def on_closing():
+        if messagebox.askokcancel("Quit", "Do you want to quit?"):
+            root.quit()
+            root.destroy()
+            # Force close the terminal/CMD window
+            if os.name == 'nt':  # Windows
+                os.system('taskkill /f /im cmd.exe /t')
+            else:  # Linux/Mac
+                os.system('kill -9 $PPID')
+            sys.exit(0)
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+    
+    # Configure style with optimized settings
     style = ttk.Style()
-    style.configure("TButton", padding=6, relief="flat", background="#ccc")
-    style.configure("TFrame", background="#f0f0f0")
-    style.configure("TLabel", background="#f0f0f0", font=("Arial", 10))
-    style.configure("Header.TLabel", font=("Arial", 14, "bold"))
+    style.theme_use('clam')  # Use clam theme for better appearance
     
-    # Create main frame
-    main_frame = ttk.Frame(root, padding="10")
+    # Configure button styles with optimized settings
+    style.configure("TButton", 
+                   padding=6,  # Reduced padding
+                   relief="flat", 
+                   background="#e1e1e1",
+                   font=("Segoe UI", 9))
+    style.map("TButton",
+              background=[("active", "#d1d1d1")],
+              relief=[("pressed", "sunken")])
+    
+    # Configure frame styles with optimized settings
+    style.configure("TFrame", 
+                   background="#f5f5f5")
+    
+    # Configure label styles with optimized settings
+    style.configure("TLabel", 
+                   background="#f5f5f5", 
+                   font=("Segoe UI", 9))
+    style.configure("Header.TLabel", 
+                   font=("Segoe UI", 16, "bold"),
+                   padding=8)  # Reduced padding
+    
+    # Configure paned window style with optimized settings
+    style.configure("TPanedwindow", 
+                   background="#f5f5f5")
+    
+    # Create main frame with optimized padding
+    main_frame = ttk.Frame(root, padding="10")  # Reduced padding
     main_frame.pack(fill=tk.BOTH, expand=True)
     
-    # Header
+    # Header with optimized styling
     header_frame = ttk.Frame(main_frame)
-    header_frame.pack(fill=tk.X, pady=(0, 10))
+    header_frame.pack(fill=tk.X, pady=(0, 10))  # Reduced padding
     
-    header_label = ttk.Label(header_frame, text="Save Game Backup Tool", style="Header.TLabel")
+    header_label = ttk.Label(header_frame, 
+                           text="Save Game Backup Tool", 
+                           style="Header.TLabel")
     header_label.pack(side=tk.LEFT)
     
-    config_path_label = ttk.Label(header_frame, text=f"Config: {CONFIG_FILE}")
+    config_path_label = ttk.Label(header_frame, 
+                                text=f"Config: {CONFIG_FILE}",
+                                font=("Segoe UI", 8))
     config_path_label.pack(side=tk.RIGHT)
     
-    # Backup location info
+    # Backup location info with optimized styling
     backup_info_frame = ttk.Frame(main_frame)
-    backup_info_frame.pack(fill=tk.X, pady=(0, 10))
+    backup_info_frame.pack(fill=tk.X, pady=(0, 10))  # Reduced padding
     
-    backup_path_label = ttk.Label(backup_info_frame, text=f"Backup Location: {BASE_BACKUP_LOCATION}")
+    backup_path_label = ttk.Label(backup_info_frame, 
+                                text=f"Backup Location: {BASE_BACKUP_LOCATION}",
+                                font=("Segoe UI", 9))
     backup_path_label.pack(side=tk.LEFT)
     
     def edit_config():
         try:
             if os.path.exists(CONFIG_FILE):
-                # Use the appropriate system command to open the config file
                 import platform
                 if platform.system() == 'Windows':
                     os.startfile(CONFIG_FILE)
@@ -942,442 +1158,258 @@ def start_gui():
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open config file: {e}")
     
-    edit_config_btn = ttk.Button(backup_info_frame, text="Edit Config", command=edit_config)
+    edit_config_btn = ttk.Button(backup_info_frame, 
+                               text="Edit Config", 
+                               command=edit_config,
+                               style="TButton")
     edit_config_btn.pack(side=tk.RIGHT)
     
-    # Split the interface into two parts
+    # Split the interface into two parts with optimized styling
     paned_window = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
     paned_window.pack(fill=tk.BOTH, expand=True)
     
-    # Left panel - Buttons
+    # Left panel - Buttons with optimized layout
     left_frame = ttk.Frame(paned_window)
     paned_window.add(left_frame, weight=1)
     
-    # Right panel - Console output
+    # Right panel - Console output with optimized styling
     right_frame = ttk.Frame(paned_window)
     paned_window.add(right_frame, weight=2)
     
-    # Console output area with title
-    ttk.Label(right_frame, text="Console Output:").pack(anchor=tk.W, padx=10, pady=(10, 0))
+    # Console output area with optimized styling
+    ttk.Label(right_frame, 
+             text="Console Output:", 
+             font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, padx=10, pady=(5, 0))  # Reduced padding
     
     console_frame = ttk.Frame(right_frame, borderwidth=1, relief=tk.SUNKEN)
-    console_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    console_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)  # Reduced padding
     
-    console = scrolledtext.ScrolledText(console_frame, wrap=tk.WORD, font=("Courier", 9))
+    console = scrolledtext.ScrolledText(console_frame, 
+                                      wrap=tk.WORD, 
+                                      font=("Consolas", 10),
+                                      bg="#ffffff",
+                                      fg="#000000",
+                                      maxundo=0,  # Disable undo to improve performance
+                                      undo=False)  # Disable undo to improve performance
     console.pack(fill=tk.BOTH, expand=True)
     console.configure(state="disabled")
     
-    # Function to populate backup list and return selected title
-    def select_backup_dialog(title="Select Backup", allow_cancel=True):
-        result = {"selected": None}
-        
-        dialog = tk.Toplevel(root)
-        dialog.title(title)
-        dialog.geometry("500x400")
-        dialog.transient(root)
-        dialog.grab_set()
-        
-        ttk.Label(dialog, text="Available Backups:").pack(anchor=tk.W, padx=10, pady=(10, 0))
-        
-        # Create listbox with scrollbar
-        frame = ttk.Frame(dialog)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        scrollbar = ttk.Scrollbar(frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        backup_list = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 10))
-        backup_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar.config(command=backup_list.yview)
-        
-        # Get backups
-        backups = []
-        if not os.path.exists(BASE_BACKUP_LOCATION):
-            backup_list.insert(tk.END, "No backups found")
-        else:
-            backups = [d for d in os.listdir(BASE_BACKUP_LOCATION) 
-                       if os.path.isdir(os.path.join(BASE_BACKUP_LOCATION, d)) 
-                       and d != "logs" 
-                       and not d.endswith("_backup_")]
-            
-            if not backups:
-                backup_list.insert(tk.END, "No backups found")
-            else:
-                for i, backup in enumerate(backups, 1):
-                    backup_path = os.path.join(BASE_BACKUP_LOCATION, backup)
-                    readme_path = os.path.join(backup_path, "README.txt")
-                    
-                    backup_date = "Unknown"
-                    
-                    if os.path.exists(readme_path):
-                        try:
-                            with open(readme_path, "r") as f:
-                                lines = f.readlines()
-                                for line in lines:
-                                    if "Backup Date:" in line:
-                                        backup_date = line.strip().replace("Backup Date: ", "")
-                                        break
-                        except Exception:
-                            pass
-                    
-                    backup_list.insert(tk.END, f"{backup} - {backup_date}")
-                    backup_list.itemconfig(i-1, {'bg': '#f0f0f0' if i % 2 == 0 else '#ffffff'})
-        
-        # Buttons
-        button_frame = ttk.Frame(dialog)
-        button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
-        def on_select():
-            selection = backup_list.curselection()
-            if selection and backups:
-                index = selection[0]
-                if index < len(backups):
-                    result["selected"] = backups[index]
-            dialog.destroy()
-        
-        select_btn = ttk.Button(button_frame, text="Select", command=on_select)
-        select_btn.pack(side=tk.RIGHT, padx=(5, 0))
-        
-        if allow_cancel:
-            cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy)
-            cancel_btn.pack(side=tk.RIGHT)
-        
-        # Wait for dialog to close
-        dialog.wait_window()
-        return result["selected"]
-    
-    # Create buttons with consistent sizing
+    # Create buttons with optimized sizing and spacing
     button_frame = ttk.Frame(left_frame)
-    button_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    button_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)  # Reduced padding
     
-    button_width = 20
+    # Create a canvas with scrollbar for the buttons
+    canvas = tk.Canvas(button_frame, bg="#f5f5f5", highlightthickness=0)
+    scrollbar = ttk.Scrollbar(button_frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
     
-    # Create backup button and related functions
-    def on_create_backup():
-        dialog = tk.Toplevel(root)
-        dialog.title("Create Backup")
-        dialog.geometry("500x300")
-        dialog.transient(root)
-        dialog.grab_set()
-        
-        # Game title
-        ttk.Label(dialog, text="Game Title:").pack(anchor=tk.W, padx=10, pady=(10, 0))
-        title_entry = ttk.Entry(dialog, width=50)
-        title_entry.pack(fill=tk.X, padx=10, pady=(0, 10))
-        title_entry.focus_set()
-        
-        # Source path
-        ttk.Label(dialog, text="Source Folder:").pack(anchor=tk.W, padx=10, pady=(10, 0))
-        path_frame = ttk.Frame(dialog)
-        path_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
-        path_entry = ttk.Entry(path_frame, width=50)
-        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        def browse_folder():
-            folder = filedialog.askdirectory(title="Select Save Game Folder")
-            if folder:
-                path_entry.delete(0, tk.END)
-                path_entry.insert(0, folder)
-        
-        browse_btn = ttk.Button(path_frame, text="Browse...", command=browse_folder)
-        browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
-        
-        # SaveGame.pro search option
-        def search_on_savegame_pro():
-            game_title = title_entry.get().strip()
-            if game_title:
-                search_url = f"{SAVEGAME_PRO_URL}?s={game_title.replace(' ', '+')}"
-                try:
-                    webbrowser.open(search_url)
-                    messagebox.showinfo("Search", f"Searching for '{game_title}' on SaveGame.pro")
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to open browser: {e}")
-            else:
-                messagebox.showwarning("Warning", "Please enter a game title first")
-        
-        search_btn = ttk.Button(dialog, text="Search on SaveGame.pro", command=search_on_savegame_pro)
-        search_btn.pack(anchor=tk.W, padx=10, pady=(0, 10))
-        
-        # Create button
-        def do_create_backup():
-            game_title = title_entry.get().strip()
-            source_path = path_entry.get().strip()
-            
-            if not game_title:
-                messagebox.showwarning("Warning", "Please enter a game title")
-                return
-                
-            if not source_path:
-                messagebox.showwarning("Warning", "Please select a source folder")
-                return
-            
-            dialog.destroy()
-            
-            # Use the thread-safe runner
-            run_in_thread(
-                lambda: create_backup(game_title, source_path),
-                f"Backup created successfully for {game_title}"
-            )
-        
-        button_frame = ttk.Frame(dialog)
-        button_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
-        
-        create_btn = ttk.Button(button_frame, text="Create Backup", command=do_create_backup)
-        create_btn.pack(side=tk.RIGHT, padx=(5, 0))
-        
-        cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy)
-        cancel_btn.pack(side=tk.RIGHT)
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
     
-    # Update backup function
-    def on_update_backup():
-        game_title = select_backup_dialog("Select Backup to Update")
-        if game_title:
-            run_in_thread(
-                lambda: update_backup(game_title, auto_confirm=True),
-                f"Backup updated successfully for {game_title}"
-            )
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=200)
+    canvas.configure(yscrollcommand=scrollbar.set)
     
-    # Restore backup function
-    def on_restore_backup():
-        game_title = select_backup_dialog("Select Backup to Restore")
-        if game_title:
-            confirm = messagebox.askyesno("Confirm Restore", 
-                                         f"Are you sure you want to restore the backup for {game_title}?\n\n"
-                                         "This will overwrite the current save files.")
-            if confirm:
-                run_in_thread(
-                    lambda: restore_backup(game_title, auto_confirm=True),
-                    f"Backup restored successfully for {game_title}"
-                )
+    # Pack the scrollbar and canvas
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
     
-    # Delete backup function
-    def on_delete_backup():
-        game_title = select_backup_dialog("Select Backup to Delete")
-        if game_title:
-            confirm = messagebox.askyesno("Confirm Delete", 
-                                         f"Are you sure you want to DELETE the backup for {game_title}?\n\n"
-                                         "This action cannot be undone!")
-            if confirm:
-                confirm2 = simpledialog.askstring("Final Confirmation", 
-                                                "Type DELETE to confirm:")
-                
-                if confirm2 == "DELETE":
-                    run_in_thread(
-                        lambda: delete_backup(game_title),
-                        f"Backup deleted successfully for {game_title}"
-                    )
-                else:
-                    messagebox.showinfo("Cancelled", "Delete operation cancelled.")
+    # Bind mouse wheel for scrolling
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
     
-    # Function for update all backups with modified behavior for GUI
-    def gui_update_all_backups():
-        """Updates all available backups (GUI version without confirmation prompt)."""
-        if not os.path.exists(BASE_BACKUP_LOCATION):
-            print("No backups found.")
-            return False
-            
-        backups = [d for d in os.listdir(BASE_BACKUP_LOCATION) 
-                  if os.path.isdir(os.path.join(BASE_BACKUP_LOCATION, d)) 
-                  and d != "logs" 
-                  and not d.endswith("_backup_")]
-        
-        if not backups:
-            print("No backups found.")
-            return False
-        
-        success_count = 0
-        failed_count = 0
-        
-        print(f"Found {len(backups)} backups to update")
-        print("Starting update operation...")
-        
-        for game_title in backups:
-            print(f"\nProcessing: {game_title}")
-            success = update_backup(game_title, auto_confirm=True)
-            if success:
-                success_count += 1
-            else:
-                failed_count += 1
-        
-        print("\n===== Update All Summary =====")
-        print(f"Total backups: {len(backups)}")
-        print(f"Successfully updated: {success_count}")
-        print(f"Failed updates: {failed_count}")
-        
-        # Log the update all event
-        log_backup_event("update_all", "ALL_GAMES", "multiple")
-        
-        return success_count > 0
+    button_width = 25  # Fixed button width
     
-    # Function for restore all backups with modified behavior for GUI
-    def gui_restore_all_backups():
-        """Restores all available backups (GUI version without confirmation prompt)."""
-        if not os.path.exists(BASE_BACKUP_LOCATION):
-            print("No backups found.")
-            return False
-            
-        backups = [d for d in os.listdir(BASE_BACKUP_LOCATION) 
-                  if os.path.isdir(os.path.join(BASE_BACKUP_LOCATION, d)) 
-                  and d != "logs" 
-                  and not d.endswith("_backup_")]
-        
-        if not backups:
-            print("No backups found.")
-            return False
-        
-        success_count = 0
-        failed_count = 0
-        
-        print(f"Found {len(backups)} backups to restore")
-        print("Starting restore operation...")
-        
-        for game_title in backups:
-            print(f"\nProcessing: {game_title}")
-            success = restore_backup(game_title, auto_confirm=True)
-            if success:
-                success_count += 1
-            else:
-                failed_count += 1
-        
-        print("\n===== Restore All Summary =====")
-        print(f"Total backups: {len(backups)}")
-        print(f"Successfully restored: {success_count}")
-        print(f"Failed restores: {failed_count}")
-        
-        # Log the restore all event
-        log_backup_event("restore_all", "ALL_GAMES", "multiple")
-        
-        return success_count > 0
+    # Create all the buttons with optimized styling
+    create_backup_btn = ttk.Button(scrollable_frame, 
+                                 text="Create Backup", 
+                                 width=button_width, 
+                                 command=on_create_backup)
+    create_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Function for update all backups
-    def on_update_all():
-        confirm = messagebox.askyesno("Confirm Update All", 
-                                     "Are you sure you want to update ALL backups?\n\n"
-                                     "This will update all game save backups with their current versions.")
-        if confirm:
-            run_in_thread(gui_update_all_backups, "All backups have been updated successfully")
+    update_backup_btn = ttk.Button(scrollable_frame, 
+                                 text="Update Backup", 
+                                 width=button_width, 
+                                 command=on_update_backup)
+    update_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Function for restore all backups
-    def on_restore_all():
-        confirm = messagebox.askyesno("Confirm Restore All", 
-                                    "⚠️ WARNING: This will restore ALL game saves to their original locations! ⚠️\n\n"
-                                    "Are you absolutely sure you want to proceed?")
-        if confirm:
-            confirm2 = simpledialog.askstring("Final Confirmation", 
-                                          "Type 'RESTORE ALL' to confirm:")
-            
-            if confirm2 == "RESTORE ALL":
-                run_in_thread(gui_restore_all_backups, "All backups have been restored successfully")
+    restore_backup_btn = ttk.Button(scrollable_frame, 
+                                  text="Restore Backup", 
+                                  width=button_width, 
+                                  command=on_restore_backup)
+    restore_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Create all the buttons
-    create_backup_btn = ttk.Button(button_frame, text="Create Backup", width=button_width, command=on_create_backup)
-    create_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    update_all_btn = ttk.Button(scrollable_frame, 
+                              text="Update All Backups", 
+                              width=button_width, 
+                              command=on_update_all)
+    update_all_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    update_backup_btn = ttk.Button(button_frame, text="Update Backup", width=button_width, command=on_update_backup)
-    update_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    restore_all_btn = ttk.Button(scrollable_frame, 
+                               text="Restore All Backups", 
+                               width=button_width, 
+                               command=on_restore_all)
+    restore_all_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    restore_backup_btn = ttk.Button(button_frame, text="Restore Backup", width=button_width, command=on_restore_backup)
-    restore_backup_btn.pack(fill=tk.X, pady=(0, 5))
-    
-    update_all_btn = ttk.Button(button_frame, text="Update All Backups", width=button_width, command=on_update_all)
-    update_all_btn.pack(fill=tk.X, pady=(0, 5))
-    
-    restore_all_btn = ttk.Button(button_frame, text="Restore All Backups", width=button_width, command=on_restore_all)
-    restore_all_btn.pack(fill=tk.X, pady=(0, 5))
-    
-    list_backups_btn = ttk.Button(button_frame, text="List Backups", width=button_width, 
+    list_backups_btn = ttk.Button(scrollable_frame, 
+                                text="List Backups", 
+                                width=button_width, 
                                 command=lambda: select_backup_dialog("Backup List", allow_cancel=True))
-    list_backups_btn.pack(fill=tk.X, pady=(0, 5))
+    list_backups_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Function to view logs
-    def on_view_logs():
-        log_file = os.path.join(LOGS_ROOT, "backup_log.txt")
-        if not os.path.exists(log_file):
-            messagebox.showinfo("Logs", "No logs found.")
-            return
-            
-        dialog = tk.Toplevel(root)
-        dialog.title("Backup Logs")
-        dialog.geometry("700x500")
-        dialog.transient(root)
-        
-        log_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("Courier", 10))
-        log_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Read logs
-        try:
-            with open(log_file, "r") as f:
-                logs = f.readlines()
-                
-            # Display the most recent logs first
-            for log in logs[-100:][::-1]:
-                log_text.insert(tk.END, log)
-                
-            log_text.insert(tk.END, f"\nShowing last {min(100, len(logs))} log entries. Total entries: {len(logs)}")
-            log_text.configure(state="disabled")  # Make read-only
-                
-        except Exception as e:
-            log_text.insert(tk.END, f"Error viewing logs: {e}")
+    view_logs_btn = ttk.Button(scrollable_frame, 
+                             text="View Logs", 
+                             width=button_width, 
+                             command=on_view_logs)
+    view_logs_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    view_logs_btn = ttk.Button(button_frame, text="View Logs", width=button_width, command=on_view_logs)
-    view_logs_btn.pack(fill=tk.X, pady=(0, 5))
+    open_savegame_btn = ttk.Button(scrollable_frame, 
+                                 text="Open SaveGame.pro", 
+                                 width=button_width, 
+                                 command=on_open_savegame_pro)
+    open_savegame_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Function to open SaveGame.pro
-    def on_open_savegame_pro():
-        try:
-            webbrowser.open(SAVEGAME_PRO_URL)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to open website: {e}")
+    search_game_btn = ttk.Button(scrollable_frame, 
+                               text="Search Game", 
+                               width=button_width, 
+                               command=on_search_game)
+    search_game_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    open_savegame_btn = ttk.Button(button_frame, text="Open SaveGame.pro", width=button_width, command=on_open_savegame_pro)
-    open_savegame_btn.pack(fill=tk.X, pady=(0, 5))
+    delete_backup_btn = ttk.Button(scrollable_frame, 
+                                 text="Delete Backup", 
+                                 width=button_width, 
+                                 command=on_delete_backup)
+    delete_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Function to search on SaveGame.pro
-    def on_search_game():
-        game_name = simpledialog.askstring("Search Game", "Enter game name to search:")
-        if game_name and game_name.strip():
-            search_url = f"{SAVEGAME_PRO_URL}?s={game_name.replace(' ', '+')}"
-            try:
-                webbrowser.open(search_url)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to open search: {e}")
+    # Add a separator before test mode and mode switch buttons
+    ttk.Separator(scrollable_frame, orient='horizontal').pack(fill=tk.X, pady=10)  # Reduced padding
     
-    search_game_btn = ttk.Button(button_frame, text="Search Game", width=button_width, command=on_search_game)
-    search_game_btn.pack(fill=tk.X, pady=(0, 5))
+    test_mode_btn = ttk.Button(scrollable_frame, 
+                             text="Create Test Backups", 
+                             width=button_width, 
+                             command=on_test_mode)
+    test_mode_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    delete_backup_btn = ttk.Button(button_frame, text="Delete Backup", width=button_width, command=on_delete_backup)
-    delete_backup_btn.pack(fill=tk.X, pady=(0, 5))
+    cli_mode_btn = ttk.Button(scrollable_frame, 
+                            text="Switch to CLI Mode", 
+                            width=button_width, 
+                            command=switch_to_cli)
+    cli_mode_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Switch to CLI mode button
-    def switch_to_cli():
-        root.destroy()
-        main(gui_mode=False)
+    exit_btn = ttk.Button(scrollable_frame, 
+                         text="Exit", 
+                         width=button_width, 
+                         command=on_closing)
+    exit_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    cli_mode_btn = ttk.Button(button_frame, text="Switch to CLI Mode", width=button_width, command=switch_to_cli)
-    cli_mode_btn.pack(fill=tk.X, pady=(20, 5))
-    
-    # Status bar
-    status_bar = ttk.Label(main_frame, text=f"Backup Location: {BASE_BACKUP_LOCATION}", relief=tk.SUNKEN, anchor=tk.W)
+    # Status bar with optimized styling
+    status_bar = ttk.Label(main_frame, 
+                          text=f"Backup Location: {BASE_BACKUP_LOCATION}", 
+                          relief=tk.SUNKEN, 
+                          anchor=tk.W,
+                          padding=3,  # Reduced padding
+                          font=("Segoe UI", 8))
     status_bar.pack(side=tk.BOTTOM, fill=tk.X)
     
-    # Set minimum size for each panel
-    paned_window.paneconfig(left_frame, minsize=200)
-    paned_window.paneconfig(right_frame, minsize=300)
-    
-    # Welcome message in console
+    # Welcome message in console with optimized formatting
     console.configure(state="normal")
     console.insert(tk.END, "Welcome to Save Game Backup Tool!\n")
-    console.insert(tk.END, "==============================\n\n")
+    console.insert(tk.END, "================================\n\n")
     console.insert(tk.END, f"Base Backup Location: {BASE_BACKUP_LOCATION}\n")
     console.insert(tk.END, f"Config File: {CONFIG_FILE}\n\n")
     console.insert(tk.END, "Select an operation from the buttons on the left.\n")
     console.insert(tk.END, "Console output will appear here.\n")
     console.configure(state="disabled")
     
-    # Start the main loop
-    root.mainloop()
+    # Start the main loop with improved error handling
+    try:
+        root.mainloop()
+    except Exception as e:
+        print(f"Error in main loop: {e}")
+    finally:
+        root.quit()
+        root.destroy()
+        sys.exit(0)
+
+def run_in_thread(func, success_msg=None):
+    """Thread-safe function executor for GUI operations."""
+    global console
+    # Create a queue for console output
+    console_queue = queue.Queue()
+    # Create a flag to signal when the operation is done
+    done_flag = threading.Event()
+    # Result storage
+    result_container = {"success": False, "error": None}
+    
+    # Text redirector for capturing console output with throttling
+    class ThreadSafeConsoleRedirector:
+        def __init__(self, queue_obj):
+            self.queue = queue_obj
+            self.last_update = 0
+            self.update_interval = 0.1  # 100ms between updates
+            
+        def write(self, string):
+            current_time = time.time()
+            if current_time - self.last_update >= self.update_interval:
+                self.queue.put(string)
+                self.last_update = current_time
+            
+        def flush(self):
+            pass
+    
+    # Function to run in a thread
+    def thread_target():
+        # Redirect stdout
+        orig_stdout = sys.stdout
+        sys.stdout = ThreadSafeConsoleRedirector(console_queue)
+        
+        try:
+            # Call the target function
+            result = func()
+            result_container["success"] = result if result is not None else True
+        except Exception as e:
+            result_container["error"] = str(e)
+            print(f"Error: {e}")
+        finally:
+            # Restore stdout
+            sys.stdout = orig_stdout
+            # Signal that we're done
+            done_flag.set()
+    
+    # Start the thread
+    thread = threading.Thread(target=thread_target)
+    thread.daemon = True
+    thread.start()
+    
+    # Function to update console and check if the thread is done
+    def check_thread():
+        # Process all messages in the queue
+        try:
+            while not console_queue.empty():
+                message = console_queue.get_nowait()
+                console.configure(state="normal")
+                console.insert(tk.END, message)
+                console.see(tk.END)
+                console.configure(state="disabled")
+                console_queue.task_done()
+        except queue.Empty:
+            pass
+        
+        # Check if the thread is done
+        if done_flag.is_set():
+            if result_container["error"]:
+                messagebox.showerror("Error", f"Operation failed: {result_container['error']}")
+            elif success_msg and result_container["success"]:
+                messagebox.showinfo("Success", success_msg)
+            return  # Stop checking
+        
+        # Schedule the next check with a longer interval
+        root.after(200, check_thread)
+    
+    # Start checking
+    root.after(200, check_thread)
 
 if __name__ == "__main__":
     try:
@@ -1387,17 +1419,22 @@ if __name__ == "__main__":
         
         # Check for command line arguments
         import sys
-        gui_mode = "--gui" in sys.argv
+        cli_mode = "--cli" in sys.argv  # Changed to check for --cli instead of --gui
         
-        if gui_mode:
-            # Skip the tip in GUI mode
-            main(gui_mode=True)
-        else:
+        if cli_mode:
             # Display a tip about savegame.pro at startup in CLI mode
             print("\nTIP: Use options 9 or 10 to quickly access savegame.pro for finding game save locations\n")
             main(gui_mode=False)
+        else:
+            # Start in GUI mode by default
+            main(gui_mode=True)
+            # Exit cleanly after GUI closes
+            sys.exit(0)
             
     except Exception as e:
         print(f"Fatal error: {e}")
         print("The program will now exit.")
-        input("Press Enter to continue...")
+        # Only show the prompt in CLI mode
+        if "--cli" in sys.argv:
+            input("Press Enter to continue...")
+        sys.exit(1)
