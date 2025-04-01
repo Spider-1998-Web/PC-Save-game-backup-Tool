@@ -581,6 +581,55 @@ def view_logs():
     except Exception as e:
         print(f"Error viewing logs: {e}")
 
+def view_logs_gui():
+    """View backup logs in a GUI dialog."""
+    if not os.path.exists(LOGS_ROOT):
+        messagebox.showinfo("No Logs", "No logs found.")
+        return
+        
+    log_file = os.path.join(LOGS_ROOT, "backup_log.txt")
+    
+    if not os.path.exists(log_file):
+        messagebox.showinfo("No Logs", "No logs found.")
+        return
+    
+    # Create log viewer dialog
+    log_dialog = tk.Toplevel(root)
+    log_dialog.title("Backup Logs")
+    log_dialog.geometry("700x500")
+    log_dialog.transient(root)
+    log_dialog.grab_set()
+    
+    # Add a frame for the log content
+    frame = ttk.Frame(log_dialog, padding="10")
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Add title label
+    ttk.Label(frame, text="Backup Logs", font=("Segoe UI", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+    
+    # Create scrolled text widget for logs
+    log_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD, font=("Consolas", 10))
+    log_text.pack(fill=tk.BOTH, expand=True)
+    
+    # Add close button
+    ttk.Button(frame, text="Close", command=log_dialog.destroy).pack(pady=10)
+    
+    try:
+        with open(log_file, "r") as f:
+            logs = f.readlines()
+        
+        log_text.insert(tk.END, f"Total log entries: {len(logs)}\n\n")
+        
+        # Display the most recent logs first
+        for log in logs[::-1]:  # Reverse the logs to show newest first
+            log_text.insert(tk.END, log)
+        
+        # Make the text widget read-only
+        log_text.configure(state="disabled")
+    except Exception as e:
+        log_text.insert(tk.END, f"Error reading logs: {e}")
+        log_text.configure(state="disabled")
+
 def list_safety_backups():
     """List all safety backups."""
     print("\nSafety Backups:")
@@ -910,7 +959,6 @@ def main(gui_mode=False):
         print("9. Open SaveGame.pro Website")
         print("D. Delete Backup")
         print("S. Search Game on SaveGame.pro")
-        print("G. Switch to GUI Mode")
         print("Q. Exit")
 
         try:
@@ -967,11 +1015,6 @@ def main(gui_mode=False):
             elif choice == "s":
                 search_game_saves()
                 
-            elif choice == "g":
-                print("Switching to GUI mode...")
-                start_gui()
-                break
-
             elif choice == "q":
                 print("Thank you for using the Backup Management System. Goodbye!")
                 break
@@ -1027,7 +1070,7 @@ def on_restore_all():
 
 def on_view_logs():
     """Handle view logs button click."""
-    run_in_thread(view_logs)
+    view_logs_gui()  # Use the GUI version directly instead of run_in_thread
 
 def on_open_savegame_pro():
     """Handle open savegame.pro button click."""
@@ -1283,20 +1326,8 @@ def start_gui():
                                  command=on_delete_backup)
     delete_backup_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
-    # Add a separator before test mode and mode switch buttons
+    # Add a separator before exit button
     ttk.Separator(scrollable_frame, orient='horizontal').pack(fill=tk.X, pady=10)  # Reduced padding
-    
-    test_mode_btn = ttk.Button(scrollable_frame, 
-                             text="Create Test Backups", 
-                             width=button_width, 
-                             command=on_test_mode)
-    test_mode_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
-    
-    cli_mode_btn = ttk.Button(scrollable_frame, 
-                            text="Switch to CLI Mode", 
-                            width=button_width, 
-                            command=switch_to_cli)
-    cli_mode_btn.pack(fill=tk.X, pady=(0, 5))  # Reduced padding
     
     exit_btn = ttk.Button(scrollable_frame, 
                          text="Exit", 
@@ -1417,24 +1448,12 @@ if __name__ == "__main__":
         for dir_path in [BASE_BACKUP_LOCATION, LOGS_ROOT, SAFETY_BACKUPS_ROOT]:
             check_create_dir(dir_path)
         
-        # Check for command line arguments
-        import sys
-        cli_mode = "--cli" in sys.argv  # Changed to check for --cli instead of --gui
-        
-        if cli_mode:
-            # Display a tip about savegame.pro at startup in CLI mode
-            print("\nTIP: Use options 9 or 10 to quickly access savegame.pro for finding game save locations\n")
-            main(gui_mode=False)
-        else:
-            # Start in GUI mode by default
-            main(gui_mode=True)
-            # Exit cleanly after GUI closes
-            sys.exit(0)
+        # Start in GUI mode by default
+        main(gui_mode=True)
+        # Exit cleanly after GUI closes
+        sys.exit(0)
             
     except Exception as e:
         print(f"Fatal error: {e}")
         print("The program will now exit.")
-        # Only show the prompt in CLI mode
-        if "--cli" in sys.argv:
-            input("Press Enter to continue...")
         sys.exit(1)
