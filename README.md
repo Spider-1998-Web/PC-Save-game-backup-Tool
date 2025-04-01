@@ -6,6 +6,19 @@ A Python application for easily backing up, managing, and restoring video game s
 
 The Save Game Backup Tool is a command-line utility designed to help gamers create and manage backups of their save game files. Never lose your progress again by maintaining organized backups that can be easily restored when needed.
 
+## 🆕 GUI Interface Now Available!
+
+The tool now features a graphical user interface for easier operation:
+
+![GUI Interface](gui_screenshot.png)
+
+To launch the tool in GUI mode:
+```
+python Game_Save_backup_script.py --gui
+```
+
+Or select "G. Switch to GUI Mode" from the command-line menu.
+
 ## ⚙️ Configuration
 
 The tool now uses a configuration file (`config.ini`) that is automatically created on first run. You can easily customize:
@@ -18,7 +31,7 @@ On first launch, the tool will create a default `config.ini` file in the same di
 Example `config.ini` file:
 ```ini
 [PATHS]
-base_backup_location = E:\save game
+base_backup_location = C:\save game
 
 [URLS]
 savegame_pro_url = https://savegame.pro/
@@ -35,12 +48,14 @@ savegame_pro_url = https://savegame.pro/
 - **SaveGame.pro Integration**: Look up save game locations directly through the app
 - **Game Save Search**: Search for specific games on SaveGame.pro
 - **Configurable Settings**: Easy configuration via an external config file
+- **GUI Interface**: User-friendly graphical interface with all features accessible via buttons
 
 ## 📋 Requirements
 
 - Python 3.6 or higher
 - Windows operating system
 - Internet connection (for SaveGame.pro features)
+- tkinter (included with standard Python installation)
 
 ## 🚀 Getting Started
 
@@ -52,8 +67,14 @@ savegame_pro_url = https://savegame.pro/
    ```
 4. Edit the generated `config.ini` file to set your preferred backup location
 5. Run the script again to start using the tool
+6. To use the GUI mode, run with the `--gui` flag:
+   ```
+   python Game_Save_backup_script.py --gui
+   ```
 
 ## 📝 Usage
+
+### Command-Line Interface
 
 The application presents a simple menu-driven interface:
 
@@ -70,19 +91,30 @@ Options:
 9. Open SaveGame.pro Website
 D. Delete Backup
 S. Search Game on SaveGame.pro
+G. Switch to GUI Mode
 Q. Exit
 ```
 
+### GUI Interface
+
+The GUI interface provides the same functionality with a more user-friendly experience:
+
+- Left panel: Operation buttons for all functions
+- Right panel: Console output showing operation results
+- Dialog boxes for input and confirmation
+- File browser for selecting save game locations
+- Edit Config button for quick access to configuration
+
 ### Creating a Backup
 
-1. Select option 1
+1. Select "Create Backup"
 2. Enter the game title
 3. Optionally search for the save location on SaveGame.pro
-4. Enter the source folder path containing the save files
+4. Enter/browse the source folder path containing the save files
 
 ### Restoring a Backup
 
-1. Select option 3
+1. Select "Restore Backup"
 2. Choose the game from the displayed list
 3. Confirm the restore operation
 
