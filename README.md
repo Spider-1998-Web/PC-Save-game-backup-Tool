@@ -6,15 +6,22 @@ A Python application for easily backing up, managing, and restoring video game s
 
 The Save Game Backup Tool is a command-line utility designed to help gamers create and manage backups of their save game files. Never lose your progress again by maintaining organized backups that can be easily restored when needed.
 
-## ⚠️ Important Configuration Note
+## ⚙️ Configuration
 
-**Before using this tool, you MUST modify the base save location:**
+The tool now uses a configuration file (`config.ini`) that is automatically created on first run. You can easily customize:
 
-The default backup location is set to `E:\save game`. You need to change this to a valid path on your system by editing the `BASE_BACKUP_LOCATION` variable at the top of the `Game_Save_backup_script.py` file:
+- **Backup Location**: The directory where all game backups will be stored
+- **URL Settings**: Links to external resources like SaveGame.pro
 
-```python
-# Change this path to where you want to store your backups
-BASE_BACKUP_LOCATION = "E:\\save game"  # Default path
+On first launch, the tool will create a default `config.ini` file in the same directory as the script. You can edit this file with any text editor to customize your settings.
+
+Example `config.ini` file:
+```ini
+[PATHS]
+base_backup_location = E:\save game
+
+[URLS]
+savegame_pro_url = https://savegame.pro/
 ```
 
 ## ✨ Features
@@ -27,6 +34,7 @@ BASE_BACKUP_LOCATION = "E:\\save game"  # Default path
 - **Logging System**: Comprehensive activity logs to track all backup operations
 - **SaveGame.pro Integration**: Look up save game locations directly through the app
 - **Game Save Search**: Search for specific games on SaveGame.pro
+- **Configurable Settings**: Easy configuration via an external config file
 
 ## 📋 Requirements
 
@@ -38,11 +46,12 @@ BASE_BACKUP_LOCATION = "E:\\save game"  # Default path
 
 1. Clone or download this repository
 2. Make sure Python is installed on your system
-3. **Edit the `Game_Save_backup_script.py` file to set your preferred backup location (see Important Configuration Note above)**
-4. Run the launcher batch file or execute the Python script directly:
+3. Run the script for the first time to generate the configuration file:
    ```
    python Game_Save_backup_script.py
    ```
+4. Edit the generated `config.ini` file to set your preferred backup location
+5. Run the script again to start using the tool
 
 ## 📝 Usage
 
@@ -77,13 +86,6 @@ Q. Exit
 2. Choose the game from the displayed list
 3. Confirm the restore operation
 
-## ⚙️ Configuration
-
-The application stores all data in the location specified by `BASE_BACKUP_LOCATION`. The default structure includes:
-- Main backup directory: `E:\save game` (or your custom path)
-- Logs directory: `E:\save game\logs`
-- Safety backups: `E:\save game\logs\safety_backups`
-
 ## 🔒 Safety Features
 
 - **Safety Backups**: The tool automatically creates a safety copy before any restore operation
@@ -93,8 +95,9 @@ The application stores all data in the location specified by `BASE_BACKUP_LOCATI
 ## 📚 File Structure
 
 - `Game_Save_backup_script.py`: Main Python script
+- `config.ini`: Configuration file (generated on first run)
 - `Save Game Backup Tool launcher.bat`: Windows batch launcher
-- `BASE_BACKUP_LOCATION/`: Root directory for all backups
+- `BASE_BACKUP_LOCATION/`: Root directory for all backups (location from config)
   - `[Game Title]/`: Individual game backup folders
   - `logs/`: Activity logs
   - `logs/safety_backups/`: Safety backup storage

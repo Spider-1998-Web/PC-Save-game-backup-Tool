@@ -2,11 +2,76 @@ import os
 import shutil
 import webbrowser
 from datetime import datetime
+import configparser
+import sys
 
-BASE_BACKUP_LOCATION = "E:\\save game"  # Backup location for all games
+# Function to create default config file
+def create_default_config():
+    config = configparser.ConfigParser()
+    
+    # Set default values
+    config['PATHS'] = {
+        'BASE_BACKUP_LOCATION': "C:\\save game",
+    }
+    
+    config['URLS'] = {
+        'SAVEGAME_PRO_URL': "https://savegame.pro/"
+    }
+    
+    # Create config directory if it doesn't exist
+    config_dir = os.path.dirname(CONFIG_FILE)
+    if not os.path.exists(config_dir) and config_dir:
+        os.makedirs(config_dir)
+    
+    # Write config to file
+    with open(CONFIG_FILE, 'w') as configfile:
+        config.write(configfile)
+    
+    print(f"Created default configuration file at: {CONFIG_FILE}")
+    print("Please edit this file to set your preferred backup location.")
+    print("Restart the application after making changes.")
+    
+    return config
+
+# Set up config file path
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+
+# Check if config file exists, create it if not
+if not os.path.exists(CONFIG_FILE):
+    config = create_default_config()
+    print("\nFirst-time setup: Default configuration has been created.")
+    print(f"Please edit {CONFIG_FILE} to set your preferred backup location.")
+    input("Press Enter to continue...")
+
+# Load configuration
+config = configparser.ConfigParser()
+config.read(CONFIG_FILE)
+
+# Get configuration values with fallbacks for safety
+try:
+    BASE_BACKUP_LOCATION = config.get('PATHS', 'BASE_BACKUP_LOCATION')
+    SAVEGAME_PRO_URL = config.get('URLS', 'SAVEGAME_PRO_URL')
+except (configparser.NoSectionError, configparser.NoOptionError) as e:
+    print(f"Error in configuration file: {e}")
+    print("Creating new default configuration file...")
+    config = create_default_config()
+    BASE_BACKUP_LOCATION = config.get('PATHS', 'BASE_BACKUP_LOCATION')
+    SAVEGAME_PRO_URL = config.get('URLS', 'SAVEGAME_PRO_URL')
+
+# Verify the backup location exists or can be created
+if not os.path.exists(BASE_BACKUP_LOCATION):
+    try:
+        os.makedirs(BASE_BACKUP_LOCATION)
+        print(f"Created backup directory: {BASE_BACKUP_LOCATION}")
+    except Exception as e:
+        print(f"ERROR: Cannot create backup directory {BASE_BACKUP_LOCATION}: {e}")
+        print("Please edit the config.ini file to set a valid backup location.")
+        input("Press Enter to exit...")
+        sys.exit(1)
+
+# Derived paths
 LOGS_ROOT = os.path.join(BASE_BACKUP_LOCATION, "logs")  # Path for logs
 SAFETY_BACKUPS_ROOT = os.path.join(LOGS_ROOT, "safety_backups")  # Path for safety backups
-SAVEGAME_PRO_URL = "https://savegame.pro/"  # URL for the savegame.pro website
 
 def copy_dir_recursively(src, dst):
     """Copy directory contents recursively from src to dst."""
