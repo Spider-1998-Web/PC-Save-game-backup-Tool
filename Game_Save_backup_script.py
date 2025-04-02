@@ -788,190 +788,125 @@ def create_cloud_backup(game_title, source_path):
         return False
 
 def restore_cloud_backup(backup_info):
-    """Restore a backup from Google Drive."""
+    """Restore a cloud backup to its original location"""
     try:
-        # Extract backup information
-        game_title = backup_info['game_title']
-        backup_name = backup_info['backup_name']
-        backup_id = backup_info['backup_id']
-        
-        print(f"Starting restore of cloud backup for {game_title}")
-        print(f"Backup name: {backup_name}")
-        print(f"Backup ID: {backup_id}")
-        
-        # Connect to Google Drive
-        print("Connecting to Google Drive API...")
+        # Get Google Drive service
         service = get_google_drive_service()
-        print("Connected to Google Drive API")
-        
-        # Verify that the backup folder exists
-        try:
-            backup_folder = service.files().get(fileId=backup_id, fields="name,mimeType").execute()
-            print(f"Found backup folder: {backup_folder.get('name')} ({backup_folder.get('mimeType')})")
-        except Exception as e:
-            print(f"Error accessing backup folder: {e}")
-            messagebox.showerror("Restore Error", f"Could not access the backup folder: {str(e)}")
-            return False
-        
-        # Look for a README file in the backup folder to get the original save path
-        source_path = None
-        print("Searching for README file in backup folder...")
-        
-        query = f"'{backup_id}' in parents and name='README.txt'"
-        try:
-            results = service.files().list(q=query, fields="files(id, name)").execute()
-            readme_files = results.get('files', [])
-            
-            if readme_files:
-                readme_id = readme_files[0]['id']
-                print(f"Found README file with ID: {readme_id}")
-                
-                # Create a temporary directory for the download
-                temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_restore")
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)  # Clean up any existing temp directory
-                os.makedirs(temp_dir, exist_ok=True)
-                
-                # Download the README file
-                request = service.files().get_media(fileId=readme_id)
-                file_content = io.BytesIO()
-                downloader = MediaIoBaseDownload(file_content, request)
-                
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                    print(f"README download progress: {int(status.progress() * 100)}%")
-                
-                # Parse the README file for the original save path
-                file_content.seek(0)
-                readme_text = file_content.read().decode('utf-8')
-                
-                for line in readme_text.splitlines():
-                    if "Original Save Path:" in line:
-                        source_path = line.strip().replace("Original Save Path: ", "").strip('"\'')
-                        print(f"Found original save path in README: {source_path}")
-                        break
-            else:
-                print("No README file found in backup folder")
-        except Exception as readme_error:
-            print(f"Error reading README file: {readme_error}")
-        
-        # If we couldn't find the path from README, use a default recovery location
-        if not source_path:
-            # Create a recovery location in the base backup folder
-            source_path = os.path.join(BASE_BACKUP_LOCATION, "recovered_games", game_title)
-            print(f"No destination path found. Will restore to recovery location: {source_path}")
-        
-        # Create a temporary directory for the download if it doesn't exist already
+        if not service:
+            raise Exception("Failed to initialize Google Drive service")
+
+        # Create a temporary directory for downloading and processing
         temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_restore")
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir, exist_ok=True)
-        else:
-            # Clean up any existing files
-            for item in os.listdir(temp_dir):
-                item_path = os.path.join(temp_dir, item)
-                if os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                else:
-                    os.remove(item_path)
-        
-        print(f"Created temporary directory for restore: {temp_dir}")
-        
-        # Find and download the ZIP file from the backup folder
-        print("Searching for backup ZIP file...")
-        query = f"'{backup_id}' in parents and mimeType contains 'zip'"
+        os.makedirs(temp_dir, exist_ok=True)
         
         try:
+            # Find the main backup folder
+            main_folder_id = find_or_create_main_folder(service)
+            if not main_folder_id:
+                raise Exception("Could not find main backup folder")
+
+            # Find the logs folder
+            logs_folder = find_or_create_logs_folder(service, main_folder_id)
+            if not logs_folder:
+                raise Exception("Could not find logs folder")
+
+            # Get the most recent README for this game from the logs folder
+            query = f"'{logs_folder['id']}' in parents and name contains '{backup_info['game_title']}_' and name contains '_README.txt'"
+            results = service.files().list(
+                q=query,
+                fields="files(id, name, createdTime)",
+                orderBy="createdTime desc"
+            ).execute()
+            
+            readme_files = results.get('files', [])
+            if not readme_files:
+                raise Exception("No README file found in logs folder")
+            
+            # Get the most recent README
+            latest_readme = readme_files[0]
+            
+            # Download and read the README file
+            readme_path = os.path.join(temp_dir, "README.txt")
+            download_from_drive(latest_readme['id'], readme_path)
+            
+            # Read the source path from README
+            source_path = None
+            print("\nReading README file:")
+            with open(readme_path, 'r') as f:
+                for line in f:
+                    print(line.strip())
+                    if line.startswith("Original Save Path:"):
+                        source_path = line.replace("Original Save Path:", "").strip()
+                        # Normalize the path by converting forward slashes to backslashes
+                        source_path = source_path.replace('/', '\\')
+                        print(f"Found source path: {source_path}")
+                        break
+            
+            if not source_path:
+                raise Exception("Could not find source path in README.txt")
+            
+            # Create the source directory and all parent directories if they don't exist
+            print(f"Creating source directory: {source_path}")
+            os.makedirs(source_path, exist_ok=True)
+
+            # Find the ZIP file in the backup
+            query = f"'{backup_info['backup_id']}' in parents and mimeType contains 'zip'"
             results = service.files().list(q=query, fields="files(id, name)").execute()
             zip_files = results.get('files', [])
             
             if not zip_files:
-                print("No ZIP file found in backup folder")
-                messagebox.showerror("Restore Error", "No backup ZIP file found in the selected backup folder.")
-                return False
+                raise Exception("No ZIP file found in backup")
             
-            zip_file = zip_files[0]
-            zip_id = zip_file['id']
-            zip_name = zip_file['name']
-            print(f"Found ZIP file: {zip_name} (ID: {zip_id})")
+            zip_file = zip_files[0]  # Get the first ZIP file
+            zip_path = os.path.join(temp_dir, zip_file['name'])
             
             # Download the ZIP file
-            print(f"Downloading backup ZIP file...")
-            zip_path = os.path.join(temp_dir, zip_name)
+            print(f"Downloading backup file: {zip_file['name']}")
+            download_from_drive(zip_file['id'], zip_path)
             
-            request = service.files().get_media(fileId=zip_id)
-            with open(zip_path, 'wb') as f:
-                downloader = MediaIoBaseDownload(f, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                    print(f"ZIP download progress: {int(status.progress() * 100)}%")
-            
-            print(f"Downloaded ZIP file to: {zip_path}")
-            
-            # Create extraction directory
+            # Create a directory for extraction
             extract_dir = os.path.join(temp_dir, "extracted")
-            if os.path.exists(extract_dir):
-                shutil.rmtree(extract_dir)
             os.makedirs(extract_dir, exist_ok=True)
             
             # Extract the ZIP file
-            print(f"Extracting ZIP file to: {extract_dir}")
-            try:
-                shutil.unpack_archive(zip_path, extract_dir)
-                print(f"Extraction successful. Contents: {os.listdir(extract_dir)}")
-            except Exception as extract_error:
-                print(f"Extraction error: {extract_error}")
-                messagebox.showerror("Restore Error", f"Failed to extract backup ZIP: {str(extract_error)}")
-                return False
-            
-            # Check if extraction worked
-            if not os.listdir(extract_dir):
-                print("Error: Extracted directory is empty.")
-                messagebox.showerror("Restore Error", "The extracted backup is empty.")
-                return False
-            
-            # Create destination directory if it doesn't exist
-            os.makedirs(source_path, exist_ok=True)
-            print(f"Created/verified destination directory: {source_path}")
-            
-            # Copy files from extracted directory to destination
-            print(f"Copying files to: {source_path}")
-            for item in os.listdir(extract_dir):
-                s = os.path.join(extract_dir, item)
-                d = os.path.join(source_path, item)
+            print("Extracting backup files...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Get the list of files and their paths
+                file_list = zip_ref.namelist()
                 
-                try:
-                    if os.path.isdir(s):
-                        if os.path.exists(d):
-                            shutil.rmtree(d)  # Remove existing directory first
-                        shutil.copytree(s, d)
-                    else:
-                        shutil.copy2(s, d)
-                    print(f"Copied: {item}")
-                except Exception as copy_error:
-                    print(f"Error copying {item}: {copy_error}")
+                # Create a backup of the current save files if the directory exists
+                if os.path.exists(source_path):
+                    backup_name = f"pre_restore_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    backup_path = os.path.join(BASE_BACKUP_LOCATION, backup_name)
+                    print(f"Creating safety backup at: {backup_path}")
+                    copy_dir_recursively(source_path, backup_path)
+                
+                # Now extract all files to the original source path
+                print(f"Restoring files to: {source_path}")
+                for file_path in file_list:
+                    # Get the relative path within the ZIP
+                    relative_path = file_path
+                    # Construct the full target path
+                    target_path = os.path.join(source_path, relative_path)
+                    # Create the target directory if it doesn't exist
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    # Extract the file
+                    with zip_ref.open(file_path) as source, open(target_path, 'wb') as target:
+                        target.write(source.read())
             
-            print(f"Restore completed successfully for {game_title} ✅")
-            log_backup_event("cloud_restore", game_title, source_path)
-            
-            # Clean up temporary files
-            try:
-                shutil.rmtree(temp_dir)
-                print("Temporary files cleaned up.")
-            except Exception as cleanup_error:
-                print(f"Warning: Could not clean up temporary files: {cleanup_error}")
-            
+            print("Backup restored successfully!")
             return True
             
-        except Exception as zip_error:
-            print(f"Error downloading or extracting ZIP file: {zip_error}")
-            messagebox.showerror("Restore Error", f"Failed to download or process backup: {str(zip_error)}")
-            return False
-            
+        finally:
+            # Clean up temporary files
+            try:
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Warning: Could not clean up temporary files: {e}")
+                
     except Exception as e:
-        print(f"Error restoring cloud backup: {e}")
-        messagebox.showerror("Restore Failed", f"Failed to restore backup: {str(e)}")
+        print(f"Failed to restore cloud backup: {e}")
         return False
 
 def delete_cloud_backup(backup_id):
