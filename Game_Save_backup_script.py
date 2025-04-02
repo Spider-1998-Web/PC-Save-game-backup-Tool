@@ -20,6 +20,8 @@ import pickle
 import io
 import zipfile
 import ctypes
+import tempfile
+import re
 
 class ThreadSafeConsoleRedirector:
     """A thread-safe console output redirector that uses a queue."""
@@ -275,42 +277,80 @@ def download_from_drive(file_id, destination_path):
         return False
 
 def find_or_create_main_folder(service):
-    """Find or create main backup folder in Google Drive."""
+    """Find or create the main backup folder in Google Drive."""
     try:
-        main_folder_name = "Game Save Tool Backups"
-        print(f"Searching for main backup folder: '{main_folder_name}'")
+        print("Searching for main backup folder: 'Game Save Tool Backups'")
         
-        # First, try to find the folder
-        query = f"mimeType='application/vnd.google-apps.folder' and name='{main_folder_name}' and trashed=false"
-        results = service.files().list(
-            q=query,
-            spaces='drive',
-            fields='files(id, name)'
-        ).execute()
-        
-        items = results.get('files', [])
-        
-        if items:
-            folder_id = items[0]['id']
-            print(f"Found existing main folder: {main_folder_name} (ID: {folder_id})")
-            return folder_id
-        
+        # First try to find the folder
+        query = "mimeType='application/vnd.google-apps.folder' and name='Game Save Tool Backups' and trashed=false"
+        try:
+            results = service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name)'
+            ).execute()
+            
+            items = results.get('files', [])
+            
+            if items:
+                folder = items[0]
+                print(f"Found existing main folder: {folder['name']} (ID: {folder['id']})")
+                return folder['id']
+                
+        except Exception as e:
+            if 'userRateLimitExceeded' in str(e):
+                print("Rate limit hit, waiting 60 seconds before retrying...")
+                time.sleep(60)  # Wait 60 seconds
+                try:
+                    results = service.files().list(
+                        q=query,
+                        spaces='drive',
+                        fields='files(id, name)'
+                    ).execute()
+                    
+                    items = results.get('files', [])
+                    
+                    if items:
+                        folder = items[0]
+                        print(f"Found existing main folder: {folder['name']} (ID: {folder['id']})")
+                        return folder['id']
+                except Exception as retry_error:
+                    print(f"Error on retry: {retry_error}")
+            
         # If not found, create it
-        print(f"Main folder not found. Creating new folder: {main_folder_name}")
+        print("Creating new main folder...")
         folder_metadata = {
-            'name': main_folder_name,
+            'name': 'Game Save Tool Backups',
             'mimeType': 'application/vnd.google-apps.folder'
         }
         
-        folder = service.files().create(
-            body=folder_metadata,
-            fields='id'
-        ).execute()
-        
-        folder_id = folder.get('id')
-        print(f"Created main folder with ID: {folder_id}")
-        return folder_id
-        
+        try:
+            folder = service.files().create(
+                body=folder_metadata,
+                fields='id, name'
+            ).execute()
+            
+            print(f"Created new main folder: {folder['name']} (ID: {folder['id']})")
+            return folder['id']
+            
+        except Exception as create_error:
+            if 'userRateLimitExceeded' in str(create_error):
+                print("Rate limit hit while creating folder, waiting 60 seconds before retrying...")
+                time.sleep(60)  # Wait 60 seconds
+                try:
+                    folder = service.files().create(
+                        body=folder_metadata,
+                        fields='id, name'
+                    ).execute()
+                    
+                    print(f"Created new main folder: {folder['name']} (ID: {folder['id']})")
+                    return folder['id']
+                except Exception as retry_error:
+                    print(f"Error on retry: {retry_error}")
+            
+            print(f"Error creating main folder: {create_error}")
+            return None
+            
     except Exception as e:
         print(f"Error finding or creating main folder: {e}")
         return None
@@ -507,6 +547,59 @@ def list_drive_backups():
         print(f"Error listing cloud backups: {e}")
         return []
 
+def find_or_create_logs_folder(service, main_folder_id):
+    """Find or create a logs folder in the main backup folder."""
+    try:
+        print("Searching for logs folder...")
+        
+        # Look for existing logs folder
+        query = f"'{main_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and name='logs' and trashed=false"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        logs_folders = results.get('files', [])
+        
+        if logs_folders:
+            print(f"Found existing logs folder: {logs_folders[0]['name']} (ID: {logs_folders[0]['id']})")
+            return logs_folders[0]
+            
+        # Create new logs folder if not found
+        print("Creating new logs folder...")
+        folder_metadata = {
+            'name': 'logs',
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [main_folder_id]
+        }
+        
+        try:
+            folder = service.files().create(
+                body=folder_metadata,
+                fields='id, name'
+            ).execute()
+            
+            print(f"Created logs folder: {folder['name']} (ID: {folder['id']})")
+            return folder
+            
+        except Exception as create_error:
+            print(f"Error creating logs folder: {create_error}")
+            if 'userRateLimitExceeded' in str(create_error):
+                print("Rate limit hit, waiting 60 seconds before retrying...")
+                time.sleep(60)  # Wait 60 seconds
+                try:
+                    folder = service.files().create(
+                        body=folder_metadata,
+                        fields='id, name'
+                    ).execute()
+                    
+                    print(f"Created logs folder on retry: {folder['name']} (ID: {folder['id']})")
+                    return folder
+                except Exception as retry_error:
+                    print(f"Error on retry: {retry_error}")
+            
+            return None
+        
+    except Exception as e:
+        print(f"Error finding/creating logs folder: {e}")
+        return None
+
 def create_cloud_backup(game_title, source_path):
     """Create a cloud backup of game save files."""
     try:
@@ -571,6 +664,14 @@ def create_cloud_backup(game_title, source_path):
             messagebox.showerror("Folder Error", error_msg)
             return False
             
+        # Find or create the logs folder
+        logs_folder = find_or_create_logs_folder(service, main_folder_id)
+        if not logs_folder:
+            error_msg = "Failed to create or find the logs folder in Google Drive."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Folder Error", error_msg)
+            return False
+            
         # List all folders in the main folder to verify visibility
         print("Checking visible folders in main backup folder...")
         main_folder_contents = list_folder_contents(service, main_folder_id)
@@ -612,12 +713,13 @@ def create_cloud_backup(game_title, source_path):
             f.write(f"Original Save Path: {source_path}\n")
             f.write(f"Backup Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Created By: Save Game Backup Tool\n")
+            f.write(f"Backup ID: {backup_folder_id}\n")
         
-        # Upload the README file
-        print("Uploading README file...")
+        # Upload the README file to logs folder
+        print("Uploading README file to logs folder...")
         readme_metadata = {
-            'name': "README.txt",
-            'parents': [backup_folder_id]
+            'name': f"{game_title}_{timestamp}_README.txt",
+            'parents': [logs_folder['id']]
         }
         
         media = MediaFileUpload(readme_path, resumable=True)
@@ -633,6 +735,11 @@ def create_cloud_backup(game_title, source_path):
         zip_filename = os.path.join(temp_dir, f"{backup_name}.zip")
         
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # First add the README file to the root of the ZIP
+            print("Adding README.txt to ZIP archive")
+            zipf.write(readme_path, "README.txt")
+            
+            # Then add all the save files
             for root, dirs, files in os.walk(source_path):
                 for file in files:
                     file_path = os.path.join(root, file)
@@ -3320,13 +3427,16 @@ def start_gui():
     cloud_row1.pack(fill=tk.X, pady=5)
     
     ttk.Button(cloud_row1, text="Create Cloud Backup", command=on_create_cloud_backup, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+    ttk.Button(cloud_row1, text="Update Cloud Backup", command=on_update_cloud_backup, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     ttk.Button(cloud_row1, text="Restore Cloud Backup", command=on_restore_cloud_backup, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     
+    # Create a frame for the 2nd row of cloud buttons
     cloud_row2 = ttk.Frame(cloud_scroll_frame)
     cloud_row2.pack(fill=tk.X, pady=5)
     
     ttk.Button(cloud_row2, text="List Cloud Backups", command=on_list_cloud_backups, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     ttk.Button(cloud_row2, text="Delete Cloud Backup", command=on_delete_cloud_backup, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+    ttk.Button(cloud_row2, text="Change Backup Location", command=on_change_backup_location, width=button_width).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     
     # Tools buttons
     tools_scroll_frame = ttk.Frame(tools_frame)
@@ -3784,6 +3894,510 @@ def on_list_safety_backups():
     
     # Start the thread
     threading.Thread(target=list_thread, daemon=True).start()
+
+def update_cloud_backup(game_title, source_path):
+    """Update an existing cloud backup with new save files."""
+    try:
+        print(f"Starting cloud backup update for {game_title}")
+        print(f"Source path: {source_path}")
+        
+        # Verify source path exists
+        if not os.path.exists(source_path):
+            print(f"Error: Source path does not exist: {source_path}")
+            messagebox.showerror("Error", f"Source path does not exist: {source_path}")
+            return False
+            
+        # Verify source path is a directory
+        if not os.path.isdir(source_path):
+            print(f"Error: Source path is not a directory: {source_path}")
+            messagebox.showerror("Error", f"Source path is not a directory: {source_path}")
+            return False
+        
+        try:
+            service = get_google_drive_service()
+            print("Connected to Google Drive.")
+        except Exception as auth_error:
+            error_msg = f"Failed to authenticate with Google Drive: {auth_error}"
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Authentication Error", error_msg)
+            return False
+        
+        # Find the main backup folder
+        main_folder_id = find_or_create_main_folder(service)
+        if not main_folder_id:
+            error_msg = "Failed to find the main backup folder in Google Drive."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Folder Error", error_msg)
+            return False
+            
+        # Find or create the logs folder
+        logs_folder = find_or_create_logs_folder(service, main_folder_id)
+        if not logs_folder:
+            error_msg = "Failed to create or find the logs folder in Google Drive."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Folder Error", error_msg)
+            return False
+        
+        # Find the game folder
+        game_folder = create_backup_folder(service, main_folder_id, game_title)
+        if not game_folder:
+            error_msg = f"Failed to find the game folder for '{game_title}'."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Folder Error", error_msg)
+            return False
+        
+        game_folder_id = game_folder['id']
+        
+        # Get the most recent backup for this game
+        query = f"'{game_folder_id}' in parents and mimeType='application/vnd.google-apps.folder'"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name, createdTime)",
+            orderBy="createdTime desc"
+        ).execute()
+        
+        backups = results.get('files', [])
+        if not backups:
+            error_msg = f"No existing backups found for '{game_title}'."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Backup Error", error_msg)
+            return False
+        
+        # Get the most recent backup
+        latest_backup = backups[0]
+        backup_id = latest_backup['id']
+        backup_name = latest_backup['name']
+        
+        print(f"Found latest backup: {backup_name}")
+        
+        # Create a temporary directory for the update
+        temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_update")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Create a new ZIP file with updated content
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+        new_backup_name = f"{game_title} - {timestamp}"
+        zip_filename = os.path.join(temp_dir, f"{new_backup_name}.zip")
+        
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(source_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, source_path)
+                    print(f"Adding file: {arcname}")
+                    zipf.write(file_path, arcname)
+        
+        # Create a new backup folder
+        backup_folder = create_backup_folder(service, game_folder_id, new_backup_name)
+        if not backup_folder:
+            error_msg = "Failed to create the new backup folder."
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Folder Error", error_msg)
+            return False
+        
+        backup_folder_id = backup_folder['id']
+        
+        # Create and upload README to logs folder
+        readme_path = os.path.join(temp_dir, "README.txt")
+        with open(readme_path, "w") as f:
+            f.write(f"Game Title: {game_title}\n")
+            f.write(f"Original Save Path: {source_path}\n")
+            f.write(f"Backup Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Created By: Save Game Backup Tool\n")
+            f.write(f"Update of: {backup_name}\n")
+            f.write(f"Backup ID: {backup_folder_id}\n")
+        
+        readme_metadata = {
+            'name': f"{game_title}_{timestamp}_README.txt",
+            'parents': [logs_folder['id']]
+        }
+        
+        media = MediaFileUpload(readme_path, resumable=True)
+        readme_file = service.files().create(
+            body=readme_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        # Upload the new ZIP file
+        zip_metadata = {
+            'name': f"{new_backup_name}.zip",
+            'parents': [backup_folder_id]
+        }
+        
+        media = MediaFileUpload(zip_filename, resumable=True)
+        file = service.files().create(
+            body=zip_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        # Clean up temporary files
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception as cleanup_error:
+            print(f"Warning: Could not clean up temp files: {cleanup_error}")
+        
+        print(f"Cloud backup updated successfully for {game_title} ✅")
+        log_backup_event("cloud_update", game_title, source_path)
+        return True
+        
+    except Exception as e:
+        print(f"Error updating cloud backup: {e}")
+        messagebox.showerror("Update Error", f"Error updating cloud backup: {str(e)}")
+        return False
+
+def on_update_cloud_backup():
+    """Handle the update cloud backup button click."""
+    # Create a new window for the update dialog
+    update_window = tk.Toplevel(root)
+    update_window.title("Update Cloud Backup")
+    update_window.geometry("600x400")
+    update_window.transient(root)
+    update_window.grab_set()
+    
+    # Create and pack widgets
+    tk.Label(update_window, text="Select the game to update:").pack(pady=10)
+    
+    # Get list of games with cloud backups
+    try:
+        service = get_google_drive_service()
+        main_folder_id = find_or_create_main_folder(service)
+        if not main_folder_id:
+            messagebox.showerror("Error", "Could not find or create main backup folder in Google Drive.")
+            return
+            
+        game_folders = get_game_folders(service, main_folder_id)
+        if not game_folders:
+            messagebox.showinfo("No Backups", "No cloud backups found. Please create a backup first.")
+            return
+            
+        # Create a listbox for game selection
+        game_listbox = tk.Listbox(update_window, width=50, height=10)
+        game_listbox.pack(pady=10)
+        
+        # Add games to listbox
+        for game in game_folders:
+            game_listbox.insert(tk.END, game['name'])
+            
+        # Create a frame for buttons
+        button_frame = tk.Frame(update_window)
+        button_frame.pack(pady=10)
+        
+        def on_update():
+            selection = game_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a game to update.")
+                return
+                
+            game_title = game_listbox.get(selection[0])
+            
+            # Create progress window
+            progress_window = tk.Toplevel(update_window)
+            progress_window.title("Updating Backup")
+            progress_window.geometry("300x100")
+            progress_window.transient(update_window)
+            progress_window.grab_set()
+            
+            # Add progress message
+            ttk.Label(progress_window, text=f"Updating backup for: {game_title}", 
+                     font=("Segoe UI", 10)).pack(pady=(20, 10))
+            
+            def update_thread():
+                try:
+                    # Get the most recent backup for this game
+                    game_folder = next((f for f in game_folders if f['name'] == game_title), None)
+                    if not game_folder:
+                        raise Exception(f"Could not find folder for game: {game_title}")
+                        
+                    # Get the most recent backup
+                    backups = list_folder_contents(service, game_folder['id'])
+                    if not backups:
+                        raise Exception(f"No backups found for game: {game_title}")
+                        
+                    # Sort by creation time, newest first
+                    backups.sort(key=lambda x: x.get('createdTime', ''), reverse=True)
+                    latest_backup = backups[0]
+                    
+                    # Find the logs folder
+                    logs_folder = find_or_create_logs_folder(service, main_folder_id)
+                    if not logs_folder:
+                        raise Exception("Could not find logs folder")
+                    
+                    # Get the most recent README for this game from the logs folder
+                    query = f"'{logs_folder['id']}' in parents and name contains '{game_title}_' and name contains '_README.txt'"
+                    results = service.files().list(
+                        q=query,
+                        fields="files(id, name, createdTime)",
+                        orderBy="createdTime desc"
+                    ).execute()
+                    
+                    readme_files = results.get('files', [])
+                    if not readme_files:
+                        raise Exception("No README file found in logs folder")
+                    
+                    # Get the most recent README
+                    latest_readme = readme_files[0]
+                    
+                    # Create a temporary directory for downloading the README
+                    temp_dir = os.path.join(BASE_BACKUP_LOCATION, "temp_cloud_update")
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
+                    os.makedirs(temp_dir, exist_ok=True)
+                    
+                    # Download and read the README file
+                    readme_path = os.path.join(temp_dir, "README.txt")
+                    download_from_drive(latest_readme['id'], readme_path)
+                    
+                    # Read the source path from README
+                    source_path = None
+                    print("\nReading README file:")
+                    with open(readme_path, 'r') as f:
+                        for line in f:
+                            print(line.strip())
+                            if line.startswith("Original Save Path:"):
+                                source_path = line.replace("Original Save Path:", "").strip()
+                                print(f"Found source path: {source_path}")
+                                break
+                    
+                    if not source_path:
+                        raise Exception("Could not find source path in README.txt")
+                    
+                    # Verify the source path exists
+                    if not os.path.exists(source_path):
+                        raise Exception(f"Source path from README does not exist: {source_path}")
+                    
+                    # Update the backup
+                    success = update_cloud_backup(game_title, source_path)
+                    
+                    def on_update_complete(success, progress_window, update_window):
+                        # Close both windows
+                        progress_window.destroy()
+                        update_window.destroy()
+                        
+                        if success:
+                            messagebox.showinfo("Success", f"Successfully updated cloud backup for {game_title}")
+                        else:
+                            messagebox.showerror("Error", f"Failed to update cloud backup for {game_title}")
+                            
+                    update_window.after(0, on_update_complete, success, progress_window, update_window)
+                    
+                except Exception as e:
+                    def on_error(error, progress_window, update_window):
+                        # Close both windows
+                        progress_window.destroy()
+                        update_window.destroy()
+                        messagebox.showerror("Error", f"Failed to update cloud backup: {str(error)}")
+                        
+                    update_window.after(0, on_error, str(e), progress_window, update_window)
+                finally:
+                    # Clean up temporary files
+                    try:
+                        if os.path.exists(temp_dir):
+                            shutil.rmtree(temp_dir)
+                    except Exception as cleanup_error:
+                        print(f"Warning: Could not clean up temp files: {cleanup_error}")
+                    
+            # Start the update in a separate thread
+            threading.Thread(target=update_thread, daemon=True).start()
+            
+        # Add buttons
+        tk.Button(button_frame, text="Update Backup", command=on_update).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=update_window.destroy).pack(side=tk.LEFT, padx=5)
+        
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to connect to Google Drive: {str(e)}")
+        update_window.destroy()
+
+def change_backup_location():
+    """Change the base backup location."""
+    try:
+        # Create a folder selection dialog
+        folder_window = tk.Toplevel(root)
+        folder_window.title("Select New Backup Location")
+        folder_window.geometry("600x400")
+        
+        # Make sure the window is on top
+        folder_window.lift()
+        folder_window.attributes('-topmost', True)
+        
+        # Create a frame for the treeview and buttons
+        frame = ttk.Frame(folder_window)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create a treeview for folder selection
+        tree = ttk.Treeview(frame, selectmode='browse')
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Cache for loaded folders
+        loaded_folders = set()
+        
+        # Function to populate the treeview
+        def populate_tree(path, parent=''):
+            try:
+                # Skip if already loaded
+                if path in loaded_folders:
+                    return
+                
+                # Add the current directory
+                dir_name = os.path.basename(path) or path
+                item = tree.insert(parent, 'end', text=dir_name, values=[path])
+                loaded_folders.add(path)
+                
+                # Add a dummy item to show expand arrow
+                tree.insert(item, 'end', text='Loading...', values=[''])
+                
+            except Exception as e:
+                print(f"Error accessing directory {path}: {e}")
+        
+        # Function to load subfolders when expanding
+        def on_expand(event):
+            # Get the item that was expanded
+            item = tree.focus()
+            if not item:
+                return
+                
+            path = tree.item(item)['values'][0]
+            
+            # Remove the dummy item
+            children = tree.get_children(item)
+            if children and tree.item(children[0])['text'] == 'Loading...':
+                tree.delete(children[0])
+            
+            # Load subfolders
+            try:
+                count = 0
+                for entry in os.scandir(path):
+                    if entry.is_dir():
+                        try:
+                            populate_tree(entry.path, item)
+                            count += 1
+                            if count >= 50:  # Limit subdirectories for performance
+                                break
+                        except Exception as e:
+                            print(f"Error accessing directory {entry.path}: {e}")
+                            continue
+            except Exception as e:
+                print(f"Error loading subfolders for {path}: {e}")
+        
+        # Bind expand event
+        tree.bind('<<TreeviewOpen>>', on_expand)
+        
+        # Function to populate initial folders
+        def populate_initial_folders():
+            try:
+                # Add drives
+                drives = [d for d in os.popen("wmic logicaldisk get caption").read().split()[1:]]
+                for drive in drives:
+                    if os.path.exists(drive):
+                        populate_tree(drive)
+                
+                # Add special folders
+                special_folders = {
+                    "Desktop": os.path.expanduser("~/Desktop"),
+                    "Documents": os.path.expanduser("~/Documents"),
+                    "Downloads": os.path.expanduser("~/Downloads"),
+                    "Pictures": os.path.expanduser("~/Pictures"),
+                    "Videos": os.path.expanduser("~/Videos"),
+                    "Music": os.path.expanduser("~/Music")
+                }
+                
+                for name, path in special_folders.items():
+                    if os.path.exists(path):
+                        try:
+                            populate_tree(path)
+                        except Exception as e:
+                            print(f"Error adding special folder {name}: {e}")
+            except Exception as e:
+                print(f"Error populating initial folders: {e}")
+        
+        # Start populating folders in a separate thread
+        threading.Thread(target=populate_initial_folders, daemon=True).start()
+        
+        # Add buttons
+        button_frame = ttk.Frame(folder_window)
+        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        def on_select():
+            selected_items = tree.selection()
+            if not selected_items:
+                messagebox.showwarning("No Selection", "Please select a folder.")
+                return
+                
+            selected_path = tree.item(selected_items[0])['values'][0]
+            folder_window.destroy()
+            
+            # Show progress window
+            progress_window = tk.Toplevel(root)
+            progress_window.title("Updating Cloud Backup")
+            progress_window.geometry("300x100")
+            progress_window.transient(root)
+            progress_window.grab_set()
+            
+            # Add progress message
+            ttk.Label(progress_window, text=f"Updating cloud backup for: {game_title}", 
+                     font=("Segoe UI", 10)).pack(pady=(20, 10))
+            
+            # Function to run update in a thread
+            def update_thread():
+                success = update_cloud_backup(game_title, selected_path)
+                
+                # Update UI from main thread
+                root.after(0, lambda: on_update_complete(success, progress_window))
+            
+            # Handle thread completion
+            def on_update_complete(success, window):
+                # Reset cursor
+                root.config(cursor="")
+                
+                # Close progress window
+                window.destroy()
+                
+                # Show appropriate message
+                if success:
+                    messagebox.showinfo("Success", f"Cloud backup for '{game_title}' was updated successfully!")
+                    # Refresh the backup list if it's currently shown
+                    run_in_thread(list_drive_backups)
+                else:
+                    messagebox.showerror("Error", 
+                                       "There was a problem updating the cloud backup.\n"
+                                       "Check the console for more details.")
+            
+            # Start the update thread
+            print(f"Starting update thread for {game_title}")
+            threading.Thread(target=update_thread, daemon=True).start()
+        
+        ttk.Button(button_frame, text="Select", command=on_select).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="Cancel", 
+                  command=folder_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Center the window
+        folder_window.update_idletasks()
+        width = folder_window.winfo_width()
+        height = folder_window.winfo_height()
+        x = (folder_window.winfo_screenwidth() // 2) - (width // 2)
+        y = (folder_window.winfo_screenheight() // 2) - (height // 2)
+        folder_window.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Make the window modal and wait for it
+        folder_window.transient(root)
+        folder_window.grab_set()
+        root.wait_window(folder_window)
+        
+    except Exception as e:
+        print(f"Error in change_backup_location: {e}")
+        messagebox.showerror("Error", f"An error occurred while changing the backup location: {str(e)}")
+
+def on_change_backup_location():
+    """Handle change backup location button click."""
+    change_backup_location()
 
 if __name__ == "__main__":
     try:
