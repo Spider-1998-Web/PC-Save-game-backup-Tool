@@ -1,49 +1,34 @@
 import os
-import sys
 import threading
 import webbrowser
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
 from core.backup_manager import GameBackupCore
 
-# Configure appearance
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("dark-blue")
-
+ 
 class BackupGUI(ctk.CTk):
     def __init__(self, core):
         super().__init__()
-        self.title("Game Backup Manager v4.1")
-        self.iconbitmap("assets/icon.ico")
+        self.title("Game Backup Manager")
         self.geometry("900x650")
         self.core = core
         self.selected_game = None
         self.create_widgets()
         self.refresh_game_list()
-        self.update_root_display()
 
     def create_widgets(self):
-        # Configure grid layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # ===== Sidebar =====
+        # Sidebar
         sidebar = ctk.CTkFrame(self)
         sidebar.grid(row=0, column=0, sticky="ns", padx=10, pady=10)
         
-        # Header
         ctk.CTkLabel(sidebar, 
                     text="Game Backup Manager",
                     font=("Arial", 18, "bold")).pack(pady=20)
-
-        # Current Root Directory
-        self.root_dir_entry = ctk.CTkEntry(
-            sidebar,
-            width=220,
-            state="readonly",
-            font=("Arial", 12)
-        )
-        self.root_dir_entry.pack(pady=(0, 20))
 
         # Action Buttons
         buttons = [
@@ -67,7 +52,7 @@ class BackupGUI(ctk.CTk):
             )
             btn.pack(fill="x", padx=5, pady=4)
 
-        # ===== Main Area =====
+        # Main area
         main = ctk.CTkFrame(self)
         main.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         main.grid_columnconfigure(0, weight=1)
@@ -87,10 +72,57 @@ class BackupGUI(ctk.CTk):
         )
         self.backup_list_frame.grid(row=1, column=1, sticky="nsew")
 
+    def refresh_game_list(self):
+        for widget in self.game_list_frame.winfo_children():
+            widget.destroy()
+
+        games = list(self.core.config['games'].keys())
+        if not games:
+            ctk.CTkLabel(self.game_list_frame, text="No games configured").pack(pady=10)
+            self.clear_backup_list()
+            return
+
+        for game in games:
+            btn = ctk.CTkButton(
+                self.game_list_frame,
+                text=game,
+                command=lambda g=game: self.on_game_select(g),
+                fg_color=("#2AA876" if game == self.selected_game else "#3B8ED0")
+            )
+            btn.pack(fill="x", pady=2, padx=5)
+
+        if games and not self.selected_game:
+            self.on_game_select(games[0])
+
+    def on_game_select(self, game_name):
+        self.selected_game = game_name
+        self.clear_backup_list()
+        
+        backups = self.core.get_backups(game_name)
+        if not backups:
+            error_msg = "No backups found"
+            if not os.path.exists(self.core.config['games'][game_name]['source_path']):
+                error_msg = f"Source path missing!\n{self.core.config['games'][game_name]['source_path']}"
+            ctk.CTkLabel(
+                self.backup_list_frame,
+                text=error_msg,
+                text_color="#FF5555" if "missing" in error_msg else None
+            ).pack(pady=10)
+            return
+
+        for idx, backup in enumerate(backups, 1):
+            size_mb = os.path.getsize(backup['path']) / (1024 * 1024)
+            text = f"{idx}. {backup['formatted_date']}\n{size_mb:.2f} MB"
+            ctk.CTkLabel(
+                self.backup_list_frame,
+                text=text,
+                font=("Arial", 11)
+            ).pack(anchor="w", pady=3)
+
     def clear_backup_list(self):
-        """Clear backup list display"""
         for widget in self.backup_list_frame.winfo_children():
             widget.destroy()
+
 
     def update_root_display(self):
         """Update root directory display"""
