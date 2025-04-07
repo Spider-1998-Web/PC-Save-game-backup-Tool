@@ -1,0 +1,50 @@
+import sys
+import subprocess
+import os
+
+def install_dependencies():
+    """Install required packages if missing"""
+    required = ['customtkinter']
+    missing = []
+    
+    # Check for missing packages
+    for package in required:
+        try:
+            __import__(package)
+        except ImportError:
+            missing.append(package)
+
+    if missing:
+        print("First-run setup: Installing GUI dependencies...")
+        try:
+            # Install missing packages
+            subprocess.check_call([
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                *missing
+            ])
+            
+            # Restart application
+            print("\nInstallation complete! Launching GUI...")
+            os.execl(sys.executable, sys.executable, *sys.argv)
+            
+        except Exception as e:
+            print(f"Automatic installation failed: {str(e)}")
+            print("Please install manually with:")
+            print(f"pip install {' '.join(missing)}")
+            sys.exit(1)
+
+def launch_gui():
+    """Directly start the GUI"""
+    from core.backup_manager import GameBackupCore
+    from ui.gui_interface import BackupGUI
+    
+    core = GameBackupCore()
+    app = BackupGUI(core)
+    app.run()
+
+if __name__ == "__main__":
+    install_dependencies()
+    launch_gui()

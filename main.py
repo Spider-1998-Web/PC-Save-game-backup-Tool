@@ -6,12 +6,13 @@ import sys
 def main():
     core = GameBackupCore()
     
-    if len(sys.argv) > 1 and sys.argv[1] == "--gui":
-        gui = BackupGUI(core)
-        gui.run()
-    else:
+   
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         cli = BackupUI(core)
         cli.show_main_menu()
+    else:
+        gui = BackupGUI(core)
+        gui.run()
 
 if __name__ == "__main__":
     main()
