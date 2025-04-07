@@ -16,6 +16,7 @@ class BackupGUI(ctk.CTk):
         self.core = core
         self.selected_game = None
         self.create_widgets()
+        self.update_root_display()  # Initialize root directory display
         self.refresh_game_list()
 
     def create_widgets(self):
@@ -26,6 +27,21 @@ class BackupGUI(ctk.CTk):
         sidebar = ctk.CTkFrame(self)
         sidebar.grid(row=0, column=0, sticky="ns", padx=10, pady=10)
         
+        # Root Directory Display
+        root_dir_frame = ctk.CTkFrame(sidebar)
+        root_dir_frame.pack(pady=10, padx=5, fill="x")
+        
+        ctk.CTkLabel(root_dir_frame, 
+                    text="Backup Location:",
+                    font=("Arial", 12, "bold")).pack(anchor="w")
+        
+        self.root_dir_entry = ctk.CTkEntry(
+            root_dir_frame,
+            width=200,
+            state="readonly"
+        )
+        self.root_dir_entry.pack(fill="x", pady=5)
+
         ctk.CTkLabel(sidebar, 
                     text="Game Backup Manager",
                     font=("Arial", 18, "bold")).pack(pady=20)
