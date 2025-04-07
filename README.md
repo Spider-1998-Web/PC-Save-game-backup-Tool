@@ -1,68 +1,95 @@
-# Save Game Backup Tool
+# Game Backup Manager
 
-A tool for managing game save backups locally and in the cloud.
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+A robust backup solution for PC game saves with version control and cross-platform support.
+
+![Application Screenshot](screenshot.png) <!-- Add screenshot later -->
 
 ## Features
 
-- Local backup creation and management
-- Cloud backup using Google Drive
-- Automatic backup updates
-- Backup restoration
-- Backup logging
-- User-friendly GUI interface
-- Integration with savegame.pro
+- 🕑 Version-controlled backups with timestamps
+- 🔄 One-click update/restore for individual games
+- ⚡ Bulk operations for all configured games
+- 🛡️ Automatic corruption detection
+- 🌐 Online save location search integration
+- 🎨 Modern GUI with dark/light themes
+- 📂 Customizable backup root directory
 
-## Setup
+## Requirements
 
-1. Install Python 3.7 or higher
-2. Install required packages:
-   ```
-   pip install -r requirements.txt
-   ```
+- Python 3.8+
+- Windows/macOS/Linux
 
-### Google Drive Setup
+## Installation
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Google Drive API for your project
-4. Go to Credentials
-5. Create OAuth 2.0 Client ID credentials
-6. Download the credentials and save them as `credentials.json` in the same directory as the script
-7. Run the script and follow the authentication process when prompted
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/game-backup-manager.git
+cd game-backup-manager
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 ## Usage
 
-### Local Backups
+### GUI Mode (Recommended)
+```bash
+python main.py --gui
+```
 
-1. Click "Create Backup" to create a new backup
-2. Enter the game title and select the source folder
-3. Use "Update Backup" to update existing backups
-4. Use "Restore Backup" to restore backups to their original location
+### CLI Mode
+```bash
+python main.py
+```
 
-### Cloud Backups
-
-1. Click "Create Cloud Backup" to upload a backup to Google Drive
-2. Use "List Cloud Backups" to view available cloud backups
-3. Use "Restore Cloud Backup" to download and restore a cloud backup
-4. Use "Delete Cloud Backup" to remove a backup from Google Drive
+### Key Functions
+| Action                | CLI Command | GUI Button        |
+|-----------------------|-------------|-------------------|
+| Create new backup     | Option 1    | 📁 Create Backup  |
+| Update existing       | Option 2    | 🔄 Update Backup  |
+| Restore backup        | Option 3    | ⏮️ Restore Backup|
+| Change root directory | Option 5    | 📂 Change Root    |
 
 ## Configuration
 
-The tool uses a `config.ini` file for configuration. You can edit this file to change:
-- Base backup location
-- Savegame.pro URL
+The `game_backup_config.json` file stores settings:
+```json
+{
+    "root_backup_dir": "C:\\save game",
+    "games": {
+        "Game Name": {
+            "source_path": "C:\\Path\\To\\Saves",
+            "backup_dir": "C:\\save game\\Game Name"
+        }
+    }
+}
+```
 
-## Logs
+## Contributing
 
-All backup operations are logged in the logs directory. You can view the logs using the "View Logs" button.
+1. Fork the repository
+2. Create your feature branch:
+```bash
+git checkout -b feature/your-feature
+```
+3. Commit changes:
+```bash
+git commit -m 'Add some feature'
+```
+4. Push to branch:
+```bash
+git push origin feature/your-feature
+```
+5. Open a Pull Request
 
-## Safety Features
+## License
+Distributed under the MIT License. See `LICENSE` for more information.
 
-- Automatic safety backups before restore operations
-- Double confirmation for destructive operations
-- Backup verification before restoration
-- Error handling and recovery
-
-## Support
-
-For issues or questions, please create an issue in the repository. 
+## Acknowledgments
+- CustomTkinter library for modern UI components
+- SaveGamePro for save location database

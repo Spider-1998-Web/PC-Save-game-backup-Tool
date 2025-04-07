@@ -1,0 +1,14 @@
+{
+    "root_backup_dir": "C:\\save game",
+    "games": {
+        "save 1": {
+            "source_path": "C:/Users/Aman/Desktop/Save file 1",
+            "backup_dir": "C:\\save game\\save 1"
+        },
+        "save 2": {
+            "source_path": "C:/Users/Aman/Desktop/Save file 2",
+            "backup_dir": "C:\\save game\\save 2"
+        }
+    },
+    "version": "4.1"
+}
