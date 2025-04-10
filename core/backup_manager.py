@@ -35,7 +35,7 @@ class GameBackupCore:
             
             cleaned_games = {}
             for game_name, game_config in config['games'].items():
-                clean_name = game_name.strip()
+                clean_name = game_name.strip().lower()  # Case-insensitive game name
                 game_config['source_path'] = os.path.normpath(game_config['source_path'].strip())
                 game_config['backup_dir'] = os.path.normpath(
                     os.path.join(config['root_backup_dir'], clean_name)
@@ -67,9 +67,10 @@ class GameBackupCore:
             raise RuntimeError(f"Path creation failed: {str(e)}")
 
     # ========== GAME MANAGEMENT METHODS ==========
+
     def add_game(self, game_name, source_path):
         """Add new game to configuration with validation"""
-        cleaned_name = game_name.strip()
+        cleaned_name = game_name.strip().lower()  # Case-insensitive game name
         
         if not cleaned_name:
             raise ValueError("Game name cannot be empty or whitespace")
@@ -92,12 +93,10 @@ class GameBackupCore:
         self._ensure_paths()
         
         return True, f"Successfully added: {cleaned_name}"
-    
-    
 
     def remove_game(self, game_name):
         """Remove game from configuration"""
-        cleaned_name = game_name.strip()
+        cleaned_name = game_name.strip().lower()  # Case-insensitive game name
         
         try:
             del self.config['games'][cleaned_name]
@@ -116,13 +115,10 @@ class GameBackupCore:
 
     # ========== BACKUP/RESTORE METHODS ==========
 
-
-
-    
     def create_backup(self, game_name):
         """Create backup with validation"""
         try:
-            game_name = game_name.strip()
+            game_name = game_name.strip().lower()  # Case-insensitive game name
             cfg = self.config['games'][game_name]
             
             if not os.path.exists(cfg['source_path']):
@@ -146,7 +142,7 @@ class GameBackupCore:
     def restore_backup(self, game_name, backup_path):
         """Restore backup with validation"""
         try:
-            game_name = game_name.strip()
+            game_name = game_name.strip().lower()  # Case-insensitive game name
             cfg = self.config['games'][game_name]
             backup_path = os.path.normpath(backup_path)
             
@@ -171,15 +167,11 @@ class GameBackupCore:
             return False, f"Game not found: {game_name}"
         except Exception as e:
             return False, f"Restore failed: {str(e)}"
-        
 
-        
-
-    # ========== UTILITY METHODS ==========
     def get_backups(self, game_name):
         """Get sorted list of backups"""
         try:
-            game_name = game_name.strip()
+            game_name = game_name.strip().lower()  # Case-insensitive game name
             backup_dir = self.config['games'][game_name]['backup_dir']
             
             if not os.path.exists(backup_dir):
@@ -224,26 +216,23 @@ class GameBackupCore:
         return results
     
     def delete_backup(self, game_name, backup_path):
-            try:
-                game_name = game_name.strip()
-                backup_path = os.path.normpath(backup_path)
-                if not os.path.exists(backup_path):
-                    return False, "Backup not found"
-                if os.path.isdir(backup_path):
-                    shutil.rmtree(backup_path)
-                else:
-                    os.remove(backup_path)
-                return True, "Backup deleted successfully"
-            except Exception as e:
-                return False, f"Deletion failed: {str(e)}"
+        """Delete a specific backup"""
+        try:
+            game_name = game_name.strip().lower()  # Case-insensitive game name
+            backup_path = os.path.normpath(backup_path)
+            if not os.path.exists(backup_path):
+                return False, "Backup not found"
+            if os.path.isdir(backup_path):
+                shutil.rmtree(backup_path)
+            else:
+                os.remove(backup_path)
+            return True, "Backup deleted successfully"
+        except Exception as e:
+            return False, f"Deletion failed: {str(e)}"
 
-    
     def search_save_locations(self, game_name):
         """Generate search URL for save locations"""
         return {
             'search_url': f"{SAVEGAME_PRO_URL}?s={urllib.parse.quote_plus(game_name)}",
-            'game': game_name.strip()
-
-
-            
+            'game': game_name.strip().lower()  # Case-insensitive game name
         }
