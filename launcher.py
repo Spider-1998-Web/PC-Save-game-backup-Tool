@@ -2,6 +2,8 @@ import sys
 import subprocess
 import os
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def install_dependencies():
     """Install required packages if missing"""
     required = ['customtkinter']
@@ -18,33 +20,38 @@ def install_dependencies():
         print("First-run setup: Installing GUI dependencies...")
         try:
             # Install missing packages
-            subprocess.check_call([
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                *missing
-            ])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
             
             # Restart application
             print("\nInstallation complete! Launching GUI...")
             os.execl(sys.executable, sys.executable, *sys.argv)
             
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             print(f"Automatic installation failed: {str(e)}")
             print("Please install manually with:")
             print(f"pip install {' '.join(missing)}")
             sys.exit(1)
+        except Exception as e:
+            print(f"Unexpected error during installation: {str(e)}")
+            sys.exit(1)
 
 def launch_gui():
     """Directly start the GUI"""
-    from core.backup_manager import GameBackupCore
-    from ui.gui_interface import BackupGUI
-    
-    core = GameBackupCore()
-    app = BackupGUI(core)
-    app.run()
+    try:
+        from core.backup_manager import GameBackupCore
+        from ui.gui_interface import BackupGUI
+        
+        core = GameBackupCore()
+        app = BackupGUI(core)
+        app.run()
+    except ImportError as e:
+        print(f"Error importing GUI components: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    install_dependencies()
-    launch_gui()
+    try:
+        install_dependencies()
+        launch_gui()
+    except Exception as e:
+        print(f"Error during setup or launch: {str(e)}")
+        sys.exit(1)

@@ -90,7 +90,10 @@ class GameBackupCore:
         
         self._save_config()
         self._ensure_paths()
+        
         return True, f"Successfully added: {cleaned_name}"
+    
+    
 
     def remove_game(self, game_name):
         """Remove game from configuration"""
@@ -112,6 +115,10 @@ class GameBackupCore:
         return [name for name in self.config['games'].keys()]
 
     # ========== BACKUP/RESTORE METHODS ==========
+
+
+
+    
     def create_backup(self, game_name):
         """Create backup with validation"""
         try:
@@ -164,6 +171,9 @@ class GameBackupCore:
             return False, f"Game not found: {game_name}"
         except Exception as e:
             return False, f"Restore failed: {str(e)}"
+        
+
+        
 
     # ========== UTILITY METHODS ==========
     def get_backups(self, game_name):
@@ -212,10 +222,28 @@ class GameBackupCore:
             success, message = self.restore_backup(game_name, backups[0]['path'])
             results[game_name] = {'success': success, 'message': message}
         return results
+    
+    def delete_backup(self, game_name, backup_path):
+            try:
+                game_name = game_name.strip()
+                backup_path = os.path.normpath(backup_path)
+                if not os.path.exists(backup_path):
+                    return False, "Backup not found"
+                if os.path.isdir(backup_path):
+                    shutil.rmtree(backup_path)
+                else:
+                    os.remove(backup_path)
+                return True, "Backup deleted successfully"
+            except Exception as e:
+                return False, f"Deletion failed: {str(e)}"
 
+    
     def search_save_locations(self, game_name):
         """Generate search URL for save locations"""
         return {
             'search_url': f"{SAVEGAME_PRO_URL}?s={urllib.parse.quote_plus(game_name)}",
             'game': game_name.strip()
+
+
+            
         }

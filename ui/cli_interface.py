@@ -53,6 +53,9 @@ class BackupUI:
                 self.core.config = self.core._load_config()
                 self.show_main_menu()
 
+
+                
+
     def _get_valid_path(self, prompt):
         """Get validated path input"""
         while True:

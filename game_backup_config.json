@@ -2,9 +2,10 @@
     "root_backup_dir": "E:\\GameBackups",
     "games": {
         "Sniper Ghost Warrior Contracts 2": {
-            "source_path": "C:/Users/Public/Documents/Steam/CODEX/1338770",
+            "source_path": "C:\\Users\\Public\\Documents\\Steam\\CODEX\\1338770",
             "backup_dir": "E:\\GameBackups\\Sniper Ghost Warrior Contracts 2"
         }
+
     },
     "version": "4.1"
 }
