@@ -70,7 +70,11 @@ class GameBackupCore:
 
     def add_game(self, game_name, source_path):
         """Add new game to configuration with validation"""
-      
+        cleaned_name = game_name.strip().lower()  # Case-insensitive game name
+
+        if cleaned_name in self.config['games']:
+            raise ValueError(f"'{cleaned_name}' already exists. Use a unique name.")
+
         source_path = source_path.strip()
         if not os.path.exists(source_path):
             raise ValueError(f"Source path does not exist: {source_path}")
