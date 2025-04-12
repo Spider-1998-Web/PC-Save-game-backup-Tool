@@ -1,10 +1,17 @@
 {
     "root_backup_dir": "C:GameBackups",
     "games": {
-        "Sniper Ghost Warrior Contracts 2": {
+        "save 1": {
+            "source_path": "C:\\Users\\Aman\\Desktop\\Save Game Backup Tool  test\\Save Game 1",
+            "backup_dir": "C:GameBackups\\save 1"
+        },
+        "save 3": {
+            "source_path": "C:\\Users\\Aman\\Desktop\\Save Game Backup Tool  test\\Save Game 2",
+            "backup_dir": "C:GameBackups\\save 3"
+        },
+        "sniper ghost warrior contracts 2": {
             "source_path": "C:\\Users\\Public\\Documents\\Steam\\CODEX\\1338770",
-            "backup_dir": "E:\\GameBackups\\Sniper Ghost Warrior Contracts 2"
-            
+            "backup_dir": "C:GameBackups\\sniper ghost warrior contracts 2"
         }
     },
     "version": "4.1"
