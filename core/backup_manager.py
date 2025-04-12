@@ -71,12 +71,12 @@ class GameBackupCore:
     def add_game(self, game_name, source_path):
         """Add new game to configuration with validation"""
         cleaned_name = game_name.strip().lower()  # Case-insensitive game name
-<<<<<<< HEAD
-=======
+
+
         
         if not cleaned_name:
             raise ValueError("Game name cannot be empty or whitespace")
->>>>>>> bc779a21f9c1d128336fef59903c756f575e910a
+
 
         if cleaned_name in self.config['games']:
             raise ValueError(f"'{cleaned_name}' already exists. Use a unique name.")
@@ -238,8 +238,4 @@ class GameBackupCore:
         return {
             'search_url': f"{SAVEGAME_PRO_URL}?s={urllib.parse.quote_plus(game_name)}",
             'game': game_name.strip().lower()  # Case-insensitive game name
-<<<<<<< HEAD
-        }
-=======
-        }
->>>>>>> bc779a21f9c1d128336fef59903c756f575e910a
+}
