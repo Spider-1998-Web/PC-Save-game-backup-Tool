@@ -169,23 +169,28 @@ class BackupGUI(ctk.CTk):
         name = ctk.CTkInputDialog(text="Enter game name:", title="Create Backup").get_input()
         if not name:
             return
-        if name in self.core.config['games']:
-            messagebox.showerror("Error", "Game already exists!")
-            return
 
         source = filedialog.askdirectory(title="Select Save Folder")
         if not source:
             return
 
-        self.core.config['games'][name] = {
-            'source_path': source,
-            'backup_dir': os.path.join(self.core.config['root_backup_dir'], name)
-        }
-        self.core._save_config()
-        self.selected_game = name  # Auto-select new game after adding
+        try:
+            success, message = self.core.add_game(name, source)
+            if not success:
+                messagebox.showerror("Error", message)
+                return
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+            return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add game: {str(e)}")
+            return
+
+        self.selected_game = name.strip().lower()
+        self.refresh_game_list()
 
         def _create():
-            success, msg = self.core.create_backup(name)
+            success, msg = self.core.create_backup(self.selected_game)
             self.after(0, lambda: messagebox.showinfo(
                 "Result", 
                 "✅ Backup created!" if success else f"❌ Error: {msg}"
@@ -318,8 +323,6 @@ class BackupGUI(ctk.CTk):
         if name:
             url = self.core.search_save_locations(name)['search_url']
             webbrowser.open(url)
-
-            
 
     def run(self):
         self.mainloop()

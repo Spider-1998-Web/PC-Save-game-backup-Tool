@@ -1,13 +1,13 @@
 {
     "root_backup_dir": "C:GameBackups",
     "games": {
-        "save 1": {
-            "source_path": "C:/Users/Aman/Desktop/Save Game Backup Tool  test/Save file 1",
-            "backup_dir": "C:GameBackups\\save 1"
+        "sniper ghost warrior contracts 2": {
+            "source_path": "C:\\Users\\Public\\Documents\\Steam\\CODEX\\1338770",
+            "backup_dir": "C:GameBackups\\sniper ghost warrior contracts 2"
         },
-        "save 2": {
-            "source_path": "C:/Users/Aman/Desktop/Save Game Backup Tool  test/Save file 2",
-            "backup_dir": "C:GameBackups\\save 2"
+        "sniper ghost warrior contracts 1": {
+            "source_path": "C:\\Users\\Public\\Documents\\Steam\\CODEX\\1338770",
+            "backup_dir": "C:GameBackups\\sniper ghost warrior contracts 1"
         }
     },
     "version": "4.1"
