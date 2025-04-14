@@ -1,3 +1,5 @@
+
+__version__ = "4.1"
 import sys
 import subprocess
 import os
