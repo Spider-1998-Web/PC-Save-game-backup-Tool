@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ### Launch the Application
 ```bash
-python main.py --gui
+python main.py
 ```
 
 
