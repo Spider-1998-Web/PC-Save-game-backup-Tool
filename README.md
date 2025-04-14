@@ -36,29 +36,13 @@ cd game-backup-manager
 pip install -r requirements.txt
 ```
 
-## Usage
+## Usage (GUI Only)
 
-### GUI Mode (Recommended)
+### Launch the Application
 ```bash
 python main.py --gui
 ```
 
-### CLI Mode
-```bash
-python main.py
-```
-
-### Key Functions
-
-| Action                | CLI Command | GUI Button          |
-|-----------------------|-------------|---------------------|
-| Create new backup     | Option 1    | 📁 Create Backup    |
-| Update existing       | Option 2    | 🔄 Update Backup    |
-| Restore backup        | Option 3    | ⏮️ Restore Backup   |
-| Delete backup         | Option 4    | 🗑️ Delete Backup    |
-| Update all backups    | Option 6    | ⚡ Update All       |
-| Restore all backups   | Option 7    | 🎮 Restore All      |
-| Change root directory | Option 5    | 📂 Change Root      |
 
 ## Configuration
 
