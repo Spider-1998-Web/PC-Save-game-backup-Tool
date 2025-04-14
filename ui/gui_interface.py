@@ -224,26 +224,19 @@ class BackupGUI(ctk.CTk):
             messagebox.showerror("Error", "No game selected!")
             return
 
-        backups = self.core.get_backups(self.selected_game)
-        if not backups:
-            messagebox.showinfo("Info", "No backups available")
+        if not self.selected_backup_path:
+            messagebox.showerror("Error", "No backup selected!")
             return
 
-        options = "\n".join([f"{i+1}. {b['formatted_date']}" for i, b in enumerate(backups)])
-        choice = ctk.CTkInputDialog(
-            text=f"Select backup to restore:\n{options}",
-            title="Restore Backup"
-        ).get_input()
-
-        if not choice or not choice.isdigit():
+        if not os.path.exists(self.selected_backup_path):
+            messagebox.showerror("Error", "Backup path is invalid!")
             return
 
-        index = int(choice) - 1
-        if 0 <= index < len(backups):
+        if messagebox.askyesno("Confirm", "Are you sure you want to restore this backup?"):
             def _restore():
                 success, msg = self.core.restore_backup(
                     self.selected_game, 
-                    backups[index]['path']
+                    self.selected_backup_path
                 )
                 self.after(0, lambda: messagebox.showinfo(
                     "Result",
@@ -257,35 +250,28 @@ class BackupGUI(ctk.CTk):
             messagebox.showerror("Error", "No game selected!")
             return
 
-        backups = self.core.get_backups(self.selected_game)
-        if not backups:
-            messagebox.showinfo("Info", "No backups available to delete")
+        if not self.selected_backup_path:
+            messagebox.showerror("Error", "No backup selected!")
             return
 
-        options = "\n".join([f"{i+1}. {b['formatted_date']}" for i, b in enumerate(backups)])
-        choice = ctk.CTkInputDialog(
-            text=f"Select backup to delete:\n{options}",
-            title="Delete Backup"
-        ).get_input()
-
-        if not choice or not choice.isdigit():
+        if not os.path.exists(self.selected_backup_path):
+            messagebox.showerror("Error", "Backup path is invalid!")
             return
 
-        index = int(choice) - 1
-        if 0 <= index < len(backups):
-            if messagebox.askyesno("Confirm", "Permanently delete this backup?"):
-                def _delete():
-                    success, msg = self.core.delete_backup(
-                        self.selected_game, 
-                        backups[index]['path']
-                    )
-                    self.after(0, lambda: messagebox.showinfo(
-                        "Result",
-                        "✅ Backup deleted!" if success else f"❌ {msg}"
-                    ))
-                    self.refresh_backup_list()
+        if messagebox.askyesno("Confirm", "Permanently delete this backup?"):
+            def _delete():
+                success, msg = self.core.delete_backup(
+                    self.selected_game,
+                    self.selected_backup_path
+                )
+                self.after(0, lambda: messagebox.showinfo(
+                    "Result",
+                    "✅ Backup deleted!" if success else f"❌ Error: {msg}"
+                ))
+                self.selected_backup_path = None
+                self.refresh_backup_list()
 
-                threading.Thread(target=_delete, daemon=True).start()
+            threading.Thread(target=_delete, daemon=True).start()
 
     def update_all_backups(self):
         if messagebox.askyesno("Confirm", "Backup ALL games?"):
