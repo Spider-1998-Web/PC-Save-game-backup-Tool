@@ -34,6 +34,10 @@ venv.bak/
 # Local configuration
 game_backup_config.json
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> dev
 
 # Backup directory (comment out if you want to track backups)
 /save_game_backups/
@@ -55,3 +59,10 @@ Thumbs.db
 .env
 .env.local
 game_backup_config.json
+<<<<<<< HEAD
+=======
+game_backup_config
+
+game_backup_config.json
+game_backup_config.json
+>>>>>>> dev
