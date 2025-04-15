@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 *.so
 .Python
-build/
+build/.
+venv
 develop-eggs/
 dist/
 downloads/

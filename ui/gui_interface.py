@@ -14,7 +14,7 @@ class BackupGUI(ctk.CTk):
     def __init__(self, core):
         super().__init__()
         configure_theme()
-        self.title("Game Backup Manager")
+        self.title("Game Backup Manager v4.1")
         self.geometry("900x650")
         self.core = core
         self.selected_game = None

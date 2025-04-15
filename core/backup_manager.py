@@ -6,7 +6,7 @@ from datetime import datetime
 
 CONFIG_FILE = "game_backup_config.json"
 SAVEGAME_PRO_URL = "https://savegame.pro/"
-DEFAULT_ROOT = os.path.join(os.path.expanduser("C:"), "GameBackups")
+DEFAULT_ROOT = os.path.abspath("C:\\GameBackups")
 
 class GameBackupCore:
     def __init__(self):
