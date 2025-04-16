@@ -25,6 +25,11 @@ A robust backup solution for PC game saves with version control and cross-platfo
 
 ## Installation
 
+### 🖥️ Prebuilt EXE (Recommended)
+If you don't have Python installed, just download the latest `.zip` from the [Releases](https://github.com/yourusername/game-backup-manager/releases) page, extract it, and run `GameBackupManager.exe`.
+
+### 🛠️ From Source (Python required)
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/game-backup-manager.git
@@ -39,10 +44,14 @@ pip install -r requirements.txt
 ## Usage (GUI Only)
 
 ### Launch the Application
-```bash
-python main.py
-```
 
+**If using the prebuilt version:**  
+Just double-click `GameBackupManager.exe`
+
+**If using the source code:**
+```bash
+python launcher.pyw
+```
 
 ## Configuration
 
