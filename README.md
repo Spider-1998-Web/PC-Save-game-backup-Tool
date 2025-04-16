@@ -26,7 +26,7 @@ A robust backup solution for PC game saves with version control and cross-platfo
 ## Installation
 
 ### 🖥️ Prebuilt EXE (Recommended)
-If you don't have Python installed, just download the latest `.zip` from the [Releases](https://github.com/yourusername/game-backup-manager/releases) page, extract it, and run `GameBackupManager.exe`.
+If you don't have Python installed, just download the latest `.zip` from the [Releases](https://github.com/Spider-1998-Web/PC-Save-Game-Backup-Tool.git) page, extract it, and run `GameBackupManager.exe`.
 
 ### 🛠️ From Source (Python required)
 
