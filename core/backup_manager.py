@@ -112,6 +112,7 @@ class GameBackupCore:
 
     # ========== BACKUP/RESTORE METHODS ==========
 
+    
     def create_backup(self, game_name):
         """Create backup with validation"""
         try:
@@ -127,8 +128,13 @@ class GameBackupCore:
             if os.path.isdir(cfg['source_path']):
                 shutil.copytree(cfg['source_path'], backup_dir, dirs_exist_ok=True)
             else:
+                os.makedirs(backup_dir, exist_ok=True)
                 shutil.copy2(cfg['source_path'], backup_dir)
-                
+            
+            # Ensure the backup folder itself has the correct timestamp
+            current_time = datetime.now().timestamp()
+            os.utime(backup_dir, (current_time, current_time))
+            
             return True, f"Backup created: {os.path.basename(backup_dir)}"
             
         except KeyError:

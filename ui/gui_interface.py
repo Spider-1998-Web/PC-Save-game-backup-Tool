@@ -204,6 +204,7 @@ class BackupGUI(ctk.CTk):
 
         threading.Thread(target=_create, daemon=True).start()
 
+    
     def update_backup(self):
         if not self.selected_game:
             messagebox.showerror("Error", "No game selected!")
@@ -211,13 +212,16 @@ class BackupGUI(ctk.CTk):
 
         def _update():
             success, msg = self.core.create_backup(self.selected_game)
-            self.after(0, lambda: messagebox.showinfo(
-                "Result", 
-                "✅ Backup updated!" if success else f"❌ Error: {msg}"
-            ))
-            self.refresh_backup_list()
+            def post_update():
+                messagebox.showinfo(
+                    "Result", 
+                    "✅ Backup updated!" if success else f"❌ Error: {msg}"
+                )
+                self.refresh_backup_list()  # Ensure it's called after backup completes
+            self.after(0, post_update)
 
         threading.Thread(target=_update, daemon=True).start()
+
 
     def restore_backup(self):
         if not self.selected_game:
