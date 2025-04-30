@@ -201,6 +201,8 @@ class BackupGUI(ctk.CTk):
 
         self.selected_game = name.strip().lower()
         self.debounce_refresh_game_list()
+        # Force refresh backup list for the new game
+        self.on_game_select(self.selected_game)  # Add this line
 
         def _create():
             success, msg = self.core.create_backup(self.selected_game)
@@ -211,7 +213,6 @@ class BackupGUI(ctk.CTk):
             self.refresh_backup_list()
 
         threading.Thread(target=_create, daemon=True).start()
-
     
     def update_backup(self):
         if not self.selected_game:
