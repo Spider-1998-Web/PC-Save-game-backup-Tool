@@ -187,12 +187,20 @@ class BackupGUI(ctk.CTk):
         if not source:
             return
 
-        self.core.config['games'][name] = {
-            'source_path': source,
-            'backup_dir': os.path.join(self.core.config['root_backup_dir'], name)
-        }
-        self.core._save_config()
-        self.selected_game = name  # Auto-select new game after adding
+        try:
+            success, message = self.core.add_game(name, source)
+            if not success:
+                messagebox.showerror("Error", message)
+                return
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+            return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add game: {str(e)}")
+            return
+
+        self.selected_game = name.strip().lower()
+        self.debounce_refresh_game_list()
 
         def _create():
             success, msg = self.core.create_backup(self.selected_game)
@@ -203,7 +211,6 @@ class BackupGUI(ctk.CTk):
             self.refresh_backup_list()
 
         threading.Thread(target=_create, daemon=True).start()
-
     
     def update_backup(self):
         if not self.selected_game:
