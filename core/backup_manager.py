@@ -232,6 +232,38 @@ class GameBackupCore:
             return True, "Backup deleted successfully"
         except Exception as e:
             return False, f"Deletion failed: {str(e)}"
+        
+
+    def export_config(self, export_path):
+        """Export configuration to specified path"""
+        try:
+            shutil.copy(CONFIG_FILE, export_path)
+            return True, f"Config exported to {export_path}"
+        except Exception as e:
+            return False, f"Export failed: {str(e)}"
+
+    def import_config(self, import_path):
+        """Import configuration from file with validation"""
+        try:
+            with open(import_path, 'r') as f:
+                new_config = json.load(f)
+            
+            # Basic validation
+            required_keys = ['root_backup_dir', 'games', 'version']
+            if not all(key in new_config for key in required_keys):
+                raise ValueError("Invalid configuration format")
+                
+            # Preserve current root directory structure
+            new_config['root_backup_dir'] = os.path.normpath(new_config['root_backup_dir'])
+            
+            # Overwrite current config
+            self.config = new_config
+            self._save_config()
+            self._ensure_paths()
+            return True, "Config imported successfully"
+            
+        except Exception as e:
+            return False, f"Import failed: {str(e)}"
 
     def search_save_locations(self, game_name):
         """Generate search URL for save locations"""

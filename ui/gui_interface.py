@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import threading
 import webbrowser
@@ -51,7 +52,9 @@ class BackupGUI(ctk.CTk):
             ("⚡ Update All", self.update_all_backups),
             ("\U0001F3AE Restore All", self.restore_all_backups),
             ("\U0001F4C2 Change Root", self.change_root_dir),
-            ("\U0001F50D Search Saves", self.search_save_location)
+            ("\U0001F50D Search Saves", self.search_save_location),
+            ("\U0001F4EE Export Config", self.export_config),  # New button
+            ("\U0001F4E5 Import Config", self.import_config)   # New button
         ]
 
         for text, cmd in buttons:
@@ -323,6 +326,52 @@ class BackupGUI(ctk.CTk):
         if name:
             url = self.core.search_save_locations(name)['search_url']
             webbrowser.open(url)
+
+
+    def export_config(self):
+        default_name = f"game_backup_config_{datetime.now().strftime('%Y%m%d')}.json"
+        export_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json")],
+            initialfile=default_name,
+            title="Export Configuration"
+        )
+        if export_path:
+            def _export():
+                success, msg = self.core.export_config(export_path)
+                self.after(0, lambda: messagebox.showinfo(
+                    "Export Result", 
+                    msg if success else f"❌ {msg}"
+                ))
+            
+            threading.Thread(target=_export, daemon=True).start()
+
+    def import_config(self):
+        import_path = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json")],
+            title="Select Configuration File"
+        )
+        if import_path:
+            if not messagebox.askyesno("Confirm", "This will overwrite current configuration. Continue?"):
+                return
+                
+            def _import():
+                success, msg = self.core.import_config(import_path)
+                self.after(0, lambda: self._handle_import_result(success, msg))
+            
+            threading.Thread(target=_import, daemon=True).start()
+
+    def _handle_import_result(self, success, msg):
+        if success:
+            messagebox.showinfo("Import Success", "✅ " + msg)
+            # Refresh all UI elements
+            self.selected_game = None
+            self.selected_backup_path = None
+            self.refresh_game_list()
+            self.clear_backup_list()
+            self.update_root_display()
+        else:
+            messagebox.showerror("Import Error", "❌ " + msg)
 
     def run(self):
         self.mainloop()
